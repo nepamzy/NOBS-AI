@@ -21,3 +21,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["app*"]
+
+[tool.pytest.ini_options]
+# "." resolves the app package (this dir), "../.." resolves services/ at the repo root
+# (apps/api is two levels below the repo root).
+pythonpath = [".", "../.."]
+testpaths = ["tests"]

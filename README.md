@@ -61,6 +61,18 @@ PYTHONPATH=apps/api:. python apps/worker/worker.py
 
 `GET /health` should return `{"status": "ok"}`.
 
+## Tests
+
+```
+pip install -r apps/api/requirements-dev.txt
+cd apps/api && pytest
+```
+
+Tests create and drop a throwaway `nobs_ai_test` database on the same
+Postgres server as `DATABASE_URL` (never touching `nobs_ai` itself), so a
+reachable Postgres is the only thing they need — no Redis, no worker, no LLM
+config. Job enqueueing is stubbed out in API tests.
+
 ## What actually runs vs. what's gated
 
 - **Free and real:** the API, database schema, job queue, and FFmpeg

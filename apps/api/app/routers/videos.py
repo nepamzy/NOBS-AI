@@ -7,9 +7,9 @@ from app.db import get_db
 from app.jobs.queue import enqueue_pipeline_start
 from app.models.enums import PipelineStage
 from app.models.project import Project
-from app.models.script import Script
+from app.models.script import Scene, Script
 from app.models.video import Video
-from app.schemas.script import ScriptRead
+from app.schemas.script import SceneRead, SceneUpdate, ScriptRead
 from app.schemas.video import VideoCreate, VideoRead
 
 router = APIRouter(prefix="/videos", tags=["videos"])
@@ -54,6 +54,36 @@ def get_video_script(video_id: uuid.UUID, db: Session = Depends(get_db)) -> Scri
     if script is None:
         raise HTTPException(status_code=404, detail="Script not generated yet")
     return script
+
+
+@router.patch("/{video_id}/scenes/{scene_id}", response_model=SceneRead)
+def update_scene(
+    video_id: uuid.UUID, scene_id: uuid.UUID, payload: SceneUpdate, db: Session = Depends(get_db)
+) -> Scene:
+    """The "Edit" action on a storyboard scene (CLAUDE.md: Regenerate / Edit /
+    Approve). Only allowed before storyboard approval — once approved, a
+    scene is what gets sent to paid generation, so it shouldn't shift under
+    a job that may already be running."""
+    script = db.query(Script).filter(Script.video_id == video_id).one_or_none()
+    if script is None:
+        raise HTTPException(status_code=404, detail="Script not generated yet")
+
+    scene = db.get(Scene, scene_id)
+    if scene is None or scene.script_id != script.id:
+        raise HTTPException(status_code=404, detail="Scene not found on this video")
+
+    video = db.get(Video, video_id)
+    if video.storyboard_approved:
+        raise HTTPException(
+            status_code=409, detail="Storyboard already approved — scene is no longer editable"
+        )
+
+    updates = payload.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        setattr(scene, field, value)
+    db.commit()
+    db.refresh(scene)
+    return scene
 
 
 @router.post("/{video_id}/approve-storyboard", response_model=VideoRead)
