@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     storage_backend: str = "local"
     local_storage_root: str = "./storage/local"
 
+    cors_origins: str = "http://localhost:5173"
+
     llm_provider: str = ""
     llm_api_key: str = ""
 

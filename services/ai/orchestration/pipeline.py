@@ -42,6 +42,15 @@ class PipelineBlocked(RuntimeError):
         super().__init__(f"Pipeline blocked at stage '{stage}': {reason}")
 
 
+def _block(video, db: Session, stage: str, reason: str) -> None:
+    """Every blocked stage goes through here so stage_detail always reflects
+    *why the current stage* is stuck — never a stale reason left over from
+    a stage the video has since moved past."""
+    video.stage_detail = reason
+    db.commit()
+    raise PipelineBlocked(stage, reason)
+
+
 def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bool) -> None:
     from app.models.enums import PipelineStage  # local import: avoids apps/api <-> services cycle
     from app.models.research import Research
@@ -58,9 +67,7 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
         try:
             result = ctx.research_engine.run(video.topic)
         except ApprovalRequiredError as exc:
-            video.stage_detail = exc.cost_warning.render()
-            db.commit()
-            raise PipelineBlocked("research", str(exc)) from exc
+            _block(video, db, "research", exc.cost_warning.render())
 
         research = Research(
             video_id=video.id,
@@ -97,9 +104,7 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
                 video.topic, video.target_duration_seconds, research_result
             )
         except ApprovalRequiredError as exc:
-            video.stage_detail = exc.cost_warning.render()
-            db.commit()
-            raise PipelineBlocked("script", str(exc)) from exc
+            _block(video, db, "script", exc.cost_warning.render())
 
         script = Script(
             video_id=video.id,
@@ -127,34 +132,37 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
 
     if stage == PipelineStage.STORYBOARD_REVIEW:
         if not video.storyboard_approved:
-            raise PipelineBlocked("storyboard_review", "Waiting on Nobert's approval")
+            _block(video, db, "storyboard_review", "Awaiting storyboard approval")
         video.stage = PipelineStage.VOICE
+        video.stage_detail = ""
         db.commit()
         return
 
     if stage == PipelineStage.VOICE:
-        raise PipelineBlocked(
+        _block(
+            video,
+            db,
             "voice",
             "Voice synthesis not yet wired into the pipeline runner "
             "(engine adapter exists; per-scene orchestration is a later step)",
         )
 
     if stage == PipelineStage.VIDEO_GENERATION:
-        raise PipelineBlocked(
+        _block(
+            video,
+            db,
             "video_generation",
             "Video generation not yet wired into the pipeline runner "
             "(engine adapter exists; per-scene orchestration is a later step)",
         )
 
     if stage == PipelineStage.ASSEMBLY:
-        raise PipelineBlocked(
-            "assembly", "FFmpeg assembly step not yet wired into the pipeline runner"
-        )
+        _block(video, db, "assembly", "FFmpeg assembly step not yet wired into the pipeline runner")
 
     if stage == PipelineStage.CAPTIONS:
-        raise PipelineBlocked("captions", "Captions pipeline not yet implemented")
+        _block(video, db, "captions", "Captions pipeline not yet implemented")
 
     if stage == PipelineStage.THUMBNAIL:
-        raise PipelineBlocked("thumbnail", "Thumbnail generation not yet implemented")
+        _block(video, db, "thumbnail", "Thumbnail generation not yet implemented")
 
-    raise PipelineBlocked(stage.value, "No handler for this stage")
+    _block(video, db, stage.value, "No handler for this stage")

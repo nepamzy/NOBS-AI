@@ -107,8 +107,19 @@ def test_full_free_path_reaches_storyboard_review_and_waits_for_approval(db_sess
     with pytest.raises(PipelineBlocked) as exc_info:
         advance_one_stage(video, db_session, ctx, run_research=True)
     assert exc_info.value.stage == "storyboard_review"
+    assert video.stage_detail == "Awaiting storyboard approval"
 
     video.storyboard_approved = True
     db_session.flush()
-    advance_one_stage(video, db_session, ctx, run_research=True)
+    advance_one_stage(video, db_session, ctx, run_research=True)  # STORYBOARD_REVIEW -> VOICE
     assert video.stage.value == "voice"
+    assert video.stage_detail == ""  # cleared, not left over from storyboard_review
+
+    # advance_one_stage moves one stage per call, so the next call attempts
+    # "voice" and blocks — stage_detail must reflect *that* block, not the
+    # stale "Awaiting storyboard approval" message from the previous stage.
+    with pytest.raises(PipelineBlocked) as exc_info:
+        advance_one_stage(video, db_session, ctx, run_research=True)
+    assert exc_info.value.stage == "voice"
+    assert video.stage_detail != "Awaiting storyboard approval"
+    assert "voice synthesis" in video.stage_detail.lower()

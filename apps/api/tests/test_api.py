@@ -27,6 +27,23 @@ def test_create_project_and_video_enqueues_job(client):
     assert client.enqueued_jobs[0]["run_research"] is True
 
 
+def test_list_videos_filters_by_project(client):
+    project_a = client.post("/projects", json={"name": "A"}).json()["id"]
+    project_b = client.post("/projects", json={"name": "B"}).json()["id"]
+    client.post(
+        "/videos", json={"project_id": project_a, "topic": "a1", "target_duration_seconds": 60}
+    )
+    client.post(
+        "/videos", json={"project_id": project_b, "topic": "b1", "target_duration_seconds": 60}
+    )
+
+    response = client.get("/videos", params={"project_id": project_a})
+    assert response.status_code == 200
+    videos = response.json()
+    assert len(videos) == 1
+    assert videos[0]["topic"] == "a1"
+
+
 def test_create_video_for_missing_project_404s(client):
     response = client.post(
         "/videos",

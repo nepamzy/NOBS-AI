@@ -8,11 +8,13 @@ Full product/architecture context, and the non-negotiable cost/approval
 rules Claude Code operates under in this repo, are in `CLAUDE.md` — read
 that before making changes here.
 
-**Current status:** Stage 3, backend foundation. Database schema, API
-skeleton, job queue, and the AI/video/voice engine abstraction layers are in
-place. No LLM provider, Runpod, or Chatterbox server is configured — every
-paid-action adapter raises a clear approval-required error instead of
-calling anything, by design.
+**Current status:** Stage 3, backend foundation, plus a working frontend
+against it. Database schema, API, job queue, engine abstraction layers, and
+the web interface (Dashboard, Create Video, Storyboard review/edit/approve)
+are in place and have been driven end-to-end in a browser. No LLM provider,
+Runpod, or Chatterbox server is configured — every paid-action adapter
+raises a clear approval-required error instead of calling anything, by
+design.
 
 ## Layout
 
@@ -20,6 +22,8 @@ calling anything, by design.
 apps/
   api/       FastAPI backend: models, routers, job queue, Alembic migrations
   worker/    RQ worker process that runs the pipeline jobs the API enqueues
+  web/       React + Vite + Tailwind frontend (Dashboard/Create/Projects/
+             Storyboard) against the API
 services/
   ai/        research + script engines (LLM-backed, not yet configured),
              and the orchestration state machine that drives a Video
@@ -60,6 +64,17 @@ PYTHONPATH=apps/api:. python apps/worker/worker.py
 ```
 
 `GET /health` should return `{"status": "ok"}`.
+
+```
+# Frontend (separate terminal)
+cd apps/web
+npm install
+npm run dev
+```
+
+Open http://localhost:5173. `apps/web/.env.development` points it at
+`http://localhost:8000` by default; the API's `CORS_ORIGINS` (`.env.example`)
+must include the frontend's origin.
 
 ## Tests
 

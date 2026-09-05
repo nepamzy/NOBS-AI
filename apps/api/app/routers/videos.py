@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -38,6 +38,16 @@ def create_video(payload: VideoCreate, db: Session = Depends(get_db)) -> Video:
     enqueue_pipeline_start(video_id=video.id, run_research=payload.run_research)
 
     return video
+
+
+@router.get("", response_model=list[VideoRead])
+def list_videos(
+    project_id: uuid.UUID | None = Query(default=None), db: Session = Depends(get_db)
+) -> list[Video]:
+    query = db.query(Video)
+    if project_id is not None:
+        query = query.filter(Video.project_id == project_id)
+    return query.order_by(Video.created_at.desc()).all()
 
 
 @router.get("/{video_id}", response_model=VideoRead)
