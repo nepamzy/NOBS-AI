@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+.env
+.env.local
+
+node_modules/
+
+storage/local/*
+!storage/local/.gitkeep
+
+.DS_Store
+*.log

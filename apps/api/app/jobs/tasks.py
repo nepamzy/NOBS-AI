@@ -1,0 +1,55 @@
+"""RQ task entry points. Runs inside the worker process (apps/worker), not
+the API process — the API only ever enqueues (see app/jobs/queue.py)."""
+
+import uuid
+
+from app.config import settings
+from app.db import SessionLocal
+from services.ai.orchestration.pipeline import PipelineBlocked, PipelineContext, advance_one_stage
+from services.ai.research.engine import ResearchEngine
+from services.ai.script.engine import ScriptEngine
+from services.video.wan.adapter import WanEngine
+from services.voice.chatterbox.adapter import ChatterboxEngine
+
+
+def _build_context() -> PipelineContext:
+    return PipelineContext(
+        research_engine=ResearchEngine(settings.llm_provider, settings.llm_api_key),
+        script_engine=ScriptEngine(settings.llm_provider, settings.llm_api_key),
+        voice_engine=ChatterboxEngine(settings.chatterbox_api_url),
+        video_engine=WanEngine(settings.runpod_api_key, settings.wan_endpoint_id),
+        storage_root=settings.local_storage_root,
+    )
+
+
+_MAX_STAGES_PER_JOB = 10  # safety cap against an accidental infinite loop
+
+
+def advance_pipeline(video_id: str, run_research: bool) -> str:
+    """Drive a Video forward through as many stages as it can complete
+    unattended, stopping the moment it hits something that needs Nobert:
+    an approval-gated engine call, or the storyboard-review checkpoint.
+    Returns a short status string for the RQ job result.
+
+    A PipelineBlocked is expected, normal behavior — it's reported, not
+    raised as a job failure, so RQ doesn't retry-storm a call that will
+    never succeed without Nobert's action.
+    """
+    db = SessionLocal()
+    try:
+        from app.models.video import Video
+
+        video = db.get(Video, uuid.UUID(video_id))
+        if video is None:
+            return f"video {video_id} not found"
+
+        ctx = _build_context()
+        for _ in range(_MAX_STAGES_PER_JOB):
+            try:
+                advance_one_stage(video, db, ctx, run_research=run_research)
+            except PipelineBlocked as blocked:
+                return f"blocked at {blocked.stage}: {blocked.reason}"
+
+        return f"reached {video.stage.value} (stage limit for one job run)"
+    finally:
+        db.close()
