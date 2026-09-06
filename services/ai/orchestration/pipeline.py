@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from services.ai.research.engine import ResearchEngine
 from services.ai.script.engine import ScriptEngine
 from services.common.errors import ApprovalRequiredError
-from services.video.engine import VideoEngine
+from services.video.engine import SceneClipRequest, VideoEngine
 from services.voice.engine import VoiceEngine
 
 
@@ -52,9 +52,12 @@ def _block(video, db: Session, stage: str, reason: str) -> None:
 
 
 def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bool) -> None:
-    from app.models.enums import PipelineStage  # local import: avoids apps/api <-> services cycle
+    # local imports: avoid an apps/api <-> services import cycle
+    from app.models.enums import JobStatus, PipelineStage
     from app.models.research import Research
     from app.models.script import Scene, Script
+    from app.models.video_clip import VideoClip
+    from app.models.voiceover import Voiceover
 
     stage = video.stage
 
@@ -139,32 +142,165 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
         return
 
     if stage == PipelineStage.VOICE:
-        _block(
-            video,
-            db,
-            "voice",
-            "Voice synthesis not yet wired into the pipeline runner "
-            "(engine adapter exists; per-scene orchestration is a later step)",
-        )
+        script = db.query(Script).filter(Script.video_id == video.id).one()
+        scenes = script.scenes
+        done = {v.scene_id for v in db.query(Voiceover).filter(Voiceover.video_id == video.id)}
+
+        for scene in scenes:
+            if scene.id in done:
+                continue
+            output_path = f"{ctx.storage_root}/{video.id}/voiceovers/{scene.id}.mp3"
+            try:
+                result = ctx.voice_engine.synthesize(
+                    scene.narration, video.voice_preset, output_path
+                )
+            except ApprovalRequiredError as exc:
+                _block(
+                    video,
+                    db,
+                    "voice",
+                    f"{len(done)} of {len(scenes)} scene voiceovers generated "
+                    f"(blocked on scene {scene.order}):\n{exc.cost_warning.render()}",
+                )
+
+            db.add(
+                Voiceover(
+                    video_id=video.id,
+                    scene_id=scene.id,
+                    provider=type(ctx.voice_engine).__name__,
+                    audio_path=result.audio_path,
+                    duration_seconds=result.duration_seconds,
+                    word_timestamps=result.word_timestamps,
+                )
+            )
+            # The measured narration length is ground truth for how long this
+            # scene's clip needs to be — the script engine's duration was only
+            # ever an estimate. Video generation below targets this, not the
+            # guess, which is what keeps the two from drifting apart.
+            scene.duration_seconds = round(result.duration_seconds)
+            done.add(scene.id)
+            video.stage_progress_percent = int(len(done) / len(scenes) * 100)
+            db.commit()
+
+        video.stage = PipelineStage.VIDEO_GENERATION
+        video.stage_detail = ""
+        video.stage_progress_percent = 0
+        db.commit()
+        return
 
     if stage == PipelineStage.VIDEO_GENERATION:
-        scene_count = (
-            db.query(Scene)
-            .join(Script)
-            .filter(Script.video_id == video.id)
-            .count()
-        )
-        _block(
-            video,
-            db,
-            "video_generation",
-            f"0 of {scene_count} scene clips generated — video generation not "
-            "yet wired into the pipeline runner (engine adapter exists; "
-            "per-scene orchestration is a later step)",
-        )
+        script = db.query(Script).filter(Script.video_id == video.id).one()
+        scenes = script.scenes
+        done = {
+            c.scene_id
+            for c in db.query(VideoClip).filter(
+                VideoClip.video_id == video.id, VideoClip.status == JobStatus.SUCCEEDED
+            )
+        }
+
+        for scene in scenes:
+            if scene.id in done:
+                continue
+            output_path = f"{ctx.storage_root}/{video.id}/clips/{scene.id}.mp4"
+            # scene.duration_seconds now holds the real, measured voiceover
+            # length set in the VOICE stage above, not the original script
+            # estimate — request exactly that so nothing needs stretching or
+            # trimming to line up later.
+            request = SceneClipRequest(
+                scene_id=str(scene.id),
+                visual_prompt=scene.visual_prompt,
+                duration_seconds=scene.duration_seconds,
+            )
+            try:
+                result = ctx.video_engine.generate_clip(request, output_path)
+            except ApprovalRequiredError as exc:
+                _block(
+                    video,
+                    db,
+                    "video_generation",
+                    f"{len(done)} of {len(scenes)} scene clips generated "
+                    f"(blocked on scene {scene.order}):\n{exc.cost_warning.render()}",
+                )
+
+            db.add(
+                VideoClip(
+                    video_id=video.id,
+                    scene_id=scene.id,
+                    provider=type(ctx.video_engine).__name__,
+                    status=JobStatus.SUCCEEDED,
+                    clip_path=result.clip_path,
+                    duration_seconds=result.duration_seconds,
+                )
+            )
+            done.add(scene.id)
+            video.stage_progress_percent = int(len(done) / len(scenes) * 100)
+            db.commit()
+
+        video.stage = PipelineStage.ASSEMBLY
+        video.stage_detail = ""
+        video.stage_progress_percent = 0
+        db.commit()
+        return
 
     if stage == PipelineStage.ASSEMBLY:
-        _block(video, db, "assembly", "FFmpeg assembly step not yet wired into the pipeline runner")
+        from pathlib import Path
+
+        from services.rendering.ffmpeg.assembler import (
+            AssemblyError,
+            concat_clips,
+            conform_clip_to_duration,
+            mux_voiceover,
+        )
+
+        script = db.query(Script).filter(Script.video_id == video.id).one()
+        scenes = script.scenes
+        clips = {
+            c.scene_id: c
+            for c in db.query(VideoClip).filter(
+                VideoClip.video_id == video.id, VideoClip.status == JobStatus.SUCCEEDED
+            )
+        }
+        voiceovers = {
+            v.scene_id: v for v in db.query(Voiceover).filter(Voiceover.video_id == video.id)
+        }
+
+        missing = [s.order for s in scenes if s.id not in clips or s.id not in voiceovers]
+        if missing:
+            _block(
+                video,
+                db,
+                "assembly",
+                f"Scene(s) {missing} still missing a clip or voiceover — "
+                "assembly needs every scene generated first",
+            )
+
+        output_dir = Path(ctx.storage_root) / str(video.id) / "assembly"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            scene_paths = []
+            for scene in scenes:
+                clip = clips[scene.id]
+                voiceover = voiceovers[scene.id]
+                # Conform each clip to its OWN scene's real voiceover length
+                # before concatenation (trim or hold the last frame — never a
+                # speed change) so drift can't accumulate across scenes.
+                conformed_path = str(output_dir / f"{scene.id}_conformed.mp4")
+                conform_clip_to_duration(clip.clip_path, voiceover.duration_seconds, conformed_path)
+                muxed_path = str(output_dir / f"{scene.id}_muxed.mp4")
+                mux_voiceover(conformed_path, voiceover.audio_path, muxed_path)
+                scene_paths.append(muxed_path)
+
+            final_path = str(output_dir / "final.mp4")
+            concat_clips(scene_paths, final_path)
+        except AssemblyError as exc:
+            _block(video, db, "assembly", f"ffmpeg assembly failed: {exc}")
+
+        video.final_video_path = final_path
+        video.stage = PipelineStage.CAPTIONS
+        video.stage_detail = ""
+        db.commit()
+        return
 
     if stage == PipelineStage.CAPTIONS:
         _block(video, db, "captions", "Captions pipeline not yet implemented")

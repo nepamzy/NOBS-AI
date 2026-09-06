@@ -12,6 +12,7 @@ from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 if TYPE_CHECKING:
     from app.models.video import Video
     from app.models.video_clip import VideoClip
+    from app.models.voiceover import Voiceover
 
 
 class Script(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -54,3 +55,4 @@ class Scene(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     script: Mapped["Script"] = relationship(back_populates="scenes")
     video_clips: Mapped[list["VideoClip"]] = relationship(back_populates="scene")
+    voiceovers: Mapped[list["Voiceover"]] = relationship(back_populates="scene")

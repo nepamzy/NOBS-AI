@@ -1,16 +1,21 @@
 import pytest
-from app.models.enums import PipelineStage
+from app.models.enums import JobStatus, PipelineStage
 from app.models.project import Project
 from app.models.research import Research
 from app.models.script import Script
 from app.models.user import User
 from app.models.video import Video
+from app.models.video_clip import VideoClip
+from app.models.voiceover import Voiceover
 
 from services.ai.orchestration.pipeline import PipelineBlocked, PipelineContext, advance_one_stage
 from services.ai.research.engine import ResearchEngine, ResearchResult
 from services.ai.script.engine import SceneDraft, ScriptDraft, ScriptEngine
+from services.common.errors import ApprovalRequiredError, CostWarning
+from services.video.engine import SceneClipRequest, SceneClipResult, VideoEngine
 from services.video.wan.adapter import WanEngine
 from services.voice.chatterbox.adapter import ChatterboxEngine
+from services.voice.engine import VoiceEngine, VoiceoverResult
 
 
 def _make_video(db_session, topic="topic", duration=60) -> Video:
@@ -122,4 +127,191 @@ def test_full_free_path_reaches_storyboard_review_and_waits_for_approval(db_sess
         advance_one_stage(video, db_session, ctx, run_research=True)
     assert exc_info.value.stage == "voice"
     assert video.stage_detail != "Awaiting storyboard approval"
-    assert "voice synthesis" in video.stage_detail.lower()
+    assert "0 of 2 scene voiceovers generated" in video.stage_detail
+    assert "PAYMENT / COST WARNING" in video.stage_detail
+
+
+class _FakeVoiceEngine(VoiceEngine):
+    """Duration is derived from the narration text and deliberately
+    different from the script engine's guessed scene duration, so tests can
+    prove the pipeline re-targets video generation at the *measured*
+    length rather than the original estimate."""
+
+    def __init__(self):
+        self.calls: list[tuple[str, str, str]] = []
+
+    def synthesize(self, text: str, voice_preset: str, output_path: str) -> VoiceoverResult:
+        self.calls.append((text, voice_preset, output_path))
+        duration = len(text) * 0.5
+        return VoiceoverResult(
+            audio_path=output_path,
+            duration_seconds=duration,
+            word_timestamps=[{"word": text, "start": 0.0, "end": duration}],
+        )
+
+
+class _BlockingVoiceEngine(VoiceEngine):
+    def synthesize(self, text: str, voice_preset: str, output_path: str) -> VoiceoverResult:
+        raise ApprovalRequiredError(
+            CostWarning(
+                action="synthesize",
+                service="test",
+                expected_cost="unknown",
+                billing_type="unknown",
+                max_expected_cost="unknown",
+                risk="Unknown",
+                why_needed="test",
+            )
+        )
+
+
+class _FakeVideoEngine(VideoEngine):
+    def __init__(self):
+        self.calls: list[SceneClipRequest] = []
+
+    def generate_clip(self, request: SceneClipRequest, output_path: str) -> SceneClipResult:
+        self.calls.append(request)
+        return SceneClipResult(clip_path=output_path, duration_seconds=request.duration_seconds)
+
+
+def _advance_to_voice(db_session):
+    video = _make_video(db_session)
+    fake_voice = _FakeVoiceEngine()
+    fake_video = _FakeVideoEngine()
+    ctx = PipelineContext(
+        research_engine=_FakeResearchEngine(),
+        script_engine=_FakeScriptEngine(),
+        voice_engine=fake_voice,
+        video_engine=fake_video,
+        storage_root="./storage/local",
+    )
+    advance_one_stage(video, db_session, ctx, run_research=True)  # TOPIC -> RESEARCH
+    advance_one_stage(video, db_session, ctx, run_research=True)  # RESEARCH -> SCRIPT
+    advance_one_stage(video, db_session, ctx, run_research=True)  # SCRIPT -> STORYBOARD_REVIEW
+    video.storyboard_approved = True
+    db_session.flush()
+    advance_one_stage(video, db_session, ctx, run_research=True)  # STORYBOARD_REVIEW -> VOICE
+    return video, ctx, fake_voice, fake_video
+
+
+def test_voice_stage_syncs_scene_duration_to_measured_voiceover_length(db_session):
+    video, ctx, fake_voice, _fake_video = _advance_to_voice(db_session)
+    script = db_session.query(Script).filter(Script.video_id == video.id).one()
+    original_durations = {s.id: s.duration_seconds for s in script.scenes}
+
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VOICE -> VIDEO_GENERATION
+
+    assert video.stage.value == "video_generation"
+    assert len(fake_voice.calls) == 2  # one synthesize call per scene
+
+    voiceovers = db_session.query(Voiceover).filter(Voiceover.video_id == video.id).all()
+    assert len(voiceovers) == 2
+    assert {v.scene_id for v in voiceovers} == {s.id for s in script.scenes}
+
+    db_session.refresh(script)
+    for scene in script.scenes:
+        vo = next(v for v in voiceovers if v.scene_id == scene.id)
+        # scene.duration_seconds was overwritten with the *measured*
+        # voiceover length, not left at the script engine's 8s estimate —
+        # this is the anchor that keeps video generation and narration in
+        # sync instead of drifting apart.
+        assert scene.duration_seconds == round(vo.duration_seconds)
+        assert scene.duration_seconds != original_durations[scene.id]
+
+
+def test_voice_stage_blocks_without_losing_scenes_already_synthesized(db_session):
+    video = _make_video(db_session)
+    ctx = PipelineContext(
+        research_engine=_FakeResearchEngine(),
+        script_engine=_FakeScriptEngine(),
+        voice_engine=_BlockingVoiceEngine(),
+        video_engine=_FakeVideoEngine(),
+        storage_root="./storage/local",
+    )
+    advance_one_stage(video, db_session, ctx, run_research=True)  # TOPIC -> RESEARCH
+    advance_one_stage(video, db_session, ctx, run_research=True)  # RESEARCH -> SCRIPT
+    advance_one_stage(video, db_session, ctx, run_research=True)  # SCRIPT -> STORYBOARD_REVIEW
+    video.storyboard_approved = True
+    db_session.flush()
+    advance_one_stage(video, db_session, ctx, run_research=True)  # STORYBOARD_REVIEW -> VOICE
+
+    with pytest.raises(PipelineBlocked) as exc_info:
+        advance_one_stage(video, db_session, ctx, run_research=True)
+    assert exc_info.value.stage == "voice"
+    assert "0 of 2 scene voiceovers generated" in video.stage_detail
+    assert "blocked on scene 1" in video.stage_detail
+
+
+def test_video_generation_stage_requests_measured_duration_not_original_estimate(db_session):
+    video, ctx, _fake_voice, fake_video = _advance_to_voice(db_session)
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VOICE -> VIDEO_GENERATION
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VIDEO_GENERATION -> ASSEMBLY
+
+    assert video.stage.value == "assembly"
+    assert len(fake_video.calls) == 2
+    for request in fake_video.calls:
+        # 8s was the script engine's estimate for both scenes; the real
+        # voiceover for "n1"/"n2" measures 1.0s (len(text) * 0.5) — the clip
+        # request must target that measured value, not the estimate, or the
+        # generated clip won't match its narration's real length.
+        assert request.duration_seconds == 1
+        assert request.duration_seconds != 8
+
+    clips = db_session.query(VideoClip).filter(VideoClip.video_id == video.id).all()
+    assert len(clips) == 2
+    assert all(c.status == JobStatus.SUCCEEDED for c in clips)
+
+
+def test_assembly_stage_conforms_and_muxes_each_scene_before_concatenating(db_session, monkeypatch):
+    video, ctx, _fake_voice, _fake_video = _advance_to_voice(db_session)
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VOICE -> VIDEO_GENERATION
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VIDEO_GENERATION -> ASSEMBLY
+
+    from services.rendering.ffmpeg import assembler
+
+    conform_calls: list[tuple[str, float, str]] = []
+    mux_calls: list[tuple[str, str, str]] = []
+    concat_calls: list[tuple[list[str], str]] = []
+
+    monkeypatch.setattr(
+        assembler,
+        "conform_clip_to_duration",
+        lambda clip_path, target_seconds, output_path: conform_calls.append(
+            (clip_path, target_seconds, output_path)
+        ),
+    )
+    monkeypatch.setattr(
+        assembler,
+        "mux_voiceover",
+        lambda video_path, audio_path, output_path: mux_calls.append(
+            (video_path, audio_path, output_path)
+        ),
+    )
+    monkeypatch.setattr(
+        assembler,
+        "concat_clips",
+        lambda clip_paths, output_path: concat_calls.append((clip_paths, output_path)),
+    )
+
+    advance_one_stage(video, db_session, ctx, run_research=True)  # ASSEMBLY -> CAPTIONS
+
+    assert video.stage.value == "captions"
+    assert video.final_video_path is not None
+
+    voiceovers = db_session.query(Voiceover).filter(Voiceover.video_id == video.id).all()
+    measured_durations = {vo.duration_seconds for vo in voiceovers}
+
+    # Every scene's clip was conformed to ITS OWN voiceover's measured
+    # duration (never a whole-video average or a speed change) before any
+    # concatenation happened.
+    assert len(conform_calls) == 2
+    for _clip_path, target_seconds, _output_path in conform_calls:
+        assert target_seconds in measured_durations
+
+    assert len(mux_calls) == 2
+    # each mux call's video input is the corresponding conform call's output
+    conformed_outputs = {c[2] for c in conform_calls}
+    assert {m[0] for m in mux_calls} == conformed_outputs
+
+    assert len(concat_calls) == 1
+    assert len(concat_calls[0][0]) == 2  # both scenes' muxed clips concatenated

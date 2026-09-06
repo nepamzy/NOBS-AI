@@ -46,6 +46,31 @@ def concat_clips(clip_paths: list[str], output_path: str) -> None:
         raise AssemblyError(f"ffmpeg concat failed: {result.stderr}")
 
 
+def conform_clip_to_duration(clip_path: str, target_seconds: float, output_path: str) -> None:
+    """Makes a scene's clip exactly as long as that scene's real (measured)
+    voiceover — never by changing playback speed, which is what makes a
+    video feel like it's lagging behind or rushing ahead of its narration.
+    A clip longer than the voiceover is trimmed; a shorter one is extended
+    by holding its last frame. Doing this per scene, before concatenation,
+    is what lets assembly just concatenate + mux with no drift to correct
+    for later — there's nothing left to cut and join by hand.
+    """
+    result = subprocess.run(
+        [
+            "ffmpeg", "-y",
+            "-i", clip_path,
+            "-vf", f"tpad=stop_mode=clone:stop_duration={target_seconds + 1}",
+            "-t", str(target_seconds),
+            "-an",
+            output_path,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise AssemblyError(f"ffmpeg duration-conform failed: {result.stderr}")
+
+
 def mux_voiceover(video_path: str, audio_path: str, output_path: str) -> None:
     result = subprocess.run(
         [
