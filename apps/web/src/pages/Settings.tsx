@@ -3,6 +3,7 @@ import { api, ApiError } from "../api/client";
 import type { CostCategory, Settings as SettingsData, SpendSummary } from "../api/types";
 import { DurationPicker } from "../components/DurationPicker";
 import { LoadingState } from "../components/LoadingState";
+import { StylePicker } from "../components/StylePicker";
 import { VoicePicker } from "../components/VoicePicker";
 
 const CATEGORY_LABELS: Record<CostCategory, string> = {
@@ -77,11 +78,10 @@ export function Settings() {
 
         <label className="flex flex-col gap-1.5">
           <span className="text-sm text-white/70">Default style</span>
-          <input
+          <StylePicker
             value={settings.default_style_preset}
-            onChange={(e) => setSettings({ ...settings, default_style_preset: e.target.value })}
-            placeholder="none"
-            className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white placeholder:text-white/30"
+            onChange={(id) => setSettings({ ...settings, default_style_preset: id })}
+            compact
           />
         </label>
 
@@ -137,9 +137,8 @@ function SpendSection() {
       <h2 className="font-heading text-lg font-semibold text-white">Spend</h2>
       <p className="mt-1 text-sm text-white/60">
         Every paid action in this app is required to log here (CLAUDE.md Part 4) — estimated vs.
-        actual, by category. Nothing paid has run yet, so this is honestly empty; log a cost
-        manually below if you've spent something outside the app (e.g. a Runpod pod you started
-        by hand).
+        actual, by category. Log a cost manually below if you've spent something outside the app
+        (e.g. a Runpod pod you started by hand).
       </p>
 
       <div className="mt-4 grid grid-cols-2 gap-4">

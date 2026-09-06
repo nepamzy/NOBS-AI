@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "../api/client";
-import type { Project, VoicePreset } from "../api/types";
+import type { Project, StylePreset, VoicePreset } from "../api/types";
 import { DurationPicker } from "../components/DurationPicker";
+import { StylePicker } from "../components/StylePicker";
 import { VoicePicker } from "../components/VoicePicker";
 
 const STEPS = ["Topic", "Details", "Review"];
@@ -12,6 +13,7 @@ export function CreateVideo() {
   const [step, setStep] = useState(0);
   const [projects, setProjects] = useState<Project[]>([]);
   const [voicePresets, setVoicePresets] = useState<VoicePreset[]>([]);
+  const [stylePresets, setStylePresets] = useState<StylePreset[]>([]);
   const [projectId, setProjectId] = useState<string>("");
   const [newProjectName, setNewProjectName] = useState("");
   const [topic, setTopic] = useState("");
@@ -25,6 +27,7 @@ export function CreateVideo() {
   useEffect(() => {
     api.listProjects().then(setProjects).catch(() => setProjects([]));
     api.listVoices().then(setVoicePresets).catch(() => setVoicePresets([]));
+    api.listStyles().then(setStylePresets).catch(() => setStylePresets([]));
     api
       .getSettings()
       .then((s) => {
@@ -65,6 +68,7 @@ export function CreateVideo() {
     ? (projects.find((p) => p.id === projectId)?.name ?? "")
     : newProjectName || topic.slice(0, 60) || "(untitled)";
   const voiceLabel = voicePresets.find((p) => p.id === voicePreset)?.name ?? (voicePreset || "default");
+  const styleLabel = stylePresets.find((p) => p.id === stylePreset)?.name ?? (stylePreset || "default");
 
   return (
     <div className="max-w-2xl">
@@ -166,12 +170,7 @@ export function CreateVideo() {
 
             <label className="flex flex-col gap-1.5">
               <span className="text-sm text-white/70">Style</span>
-              <input
-                value={stylePreset}
-                onChange={(e) => setStylePreset(e.target.value)}
-                placeholder="default"
-                className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white placeholder:text-white/30"
-              />
+              <StylePicker value={stylePreset} onChange={setStylePreset} />
             </label>
           </>
         )}
@@ -183,7 +182,7 @@ export function CreateVideo() {
               <Row label="Project" value={projectLabel} />
               <Row label="Duration" value={`${durationMinutes} min`} />
               <Row label="Voice" value={voiceLabel} />
-              <Row label="Style" value={stylePreset || "default"} />
+              <Row label="Style" value={styleLabel} />
               <Row label="Research" value={runResearch ? "Yes, research first" : "Skip research"} />
             </dl>
           </div>

@@ -6,6 +6,7 @@ import type {
   Script,
   Settings,
   SpendSummary,
+  StylePreset,
   Video,
   VoicePreset,
 } from "./types";
@@ -85,4 +86,5 @@ export const api = {
   }) => request<void>("/spend", { method: "POST", body: JSON.stringify(payload) }),
 
   listVoices: () => request<VoicePreset[]>("/voices"),
+  listStyles: () => request<StylePreset[]>("/styles"),
 };

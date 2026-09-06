@@ -1,8 +1,8 @@
 from pydantic import BaseModel
 
 
-class VoicePresetRead(BaseModel):
+class StylePresetRead(BaseModel):
     id: str
     name: str
     description: str
-    preview_path: str | None = None
+    accent_hex: str

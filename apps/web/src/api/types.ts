@@ -119,4 +119,12 @@ export interface VoicePreset {
   id: string;
   name: string;
   description: string;
+  preview_path: string | null;
+}
+
+export interface StylePreset {
+  id: string;
+  name: string;
+  description: string;
+  accent_hex: string;
 }
