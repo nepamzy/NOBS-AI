@@ -7,6 +7,7 @@ import type {
   Settings,
   SpendSummary,
   Video,
+  VoicePreset,
 } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -82,4 +83,6 @@ export const api = {
     estimated_cost_usd?: number | null;
     actual_cost_usd?: number | null;
   }) => request<void>("/spend", { method: "POST", body: JSON.stringify(payload) }),
+
+  listVoices: () => request<VoicePreset[]>("/voices"),
 };

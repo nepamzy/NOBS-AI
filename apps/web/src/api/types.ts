@@ -114,3 +114,9 @@ export interface SpendSummary {
   total_estimated_usd: number;
   total_actual_usd: number;
 }
+
+export interface VoicePreset {
+  id: string;
+  name: string;
+  description: string;
+}

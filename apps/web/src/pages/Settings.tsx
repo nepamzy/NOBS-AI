@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { CostCategory, Settings as SettingsData, SpendSummary } from "../api/types";
+import { DurationPicker } from "../components/DurationPicker";
 import { LoadingState } from "../components/LoadingState";
+import { VoicePicker } from "../components/VoicePicker";
 
 const CATEGORY_LABELS: Record<CostCategory, string> = {
   gpu: "GPU",
@@ -57,26 +59,19 @@ export function Settings() {
 
       <form onSubmit={handleSubmit} className="mt-6 flex max-w-md flex-col gap-5">
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm text-white/70">Default duration (min)</span>
-          <input
-            type="number"
-            min={1}
-            max={20}
-            value={settings.default_duration_minutes}
-            onChange={(e) =>
-              setSettings({ ...settings, default_duration_minutes: Number(e.target.value) })
-            }
-            className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white"
+          <span className="text-sm text-white/70">Default duration</span>
+          <DurationPicker
+            minutes={settings.default_duration_minutes}
+            onChange={(minutes) => setSettings({ ...settings, default_duration_minutes: minutes })}
           />
         </label>
 
         <label className="flex flex-col gap-1.5">
           <span className="text-sm text-white/70">Default voice</span>
-          <input
+          <VoicePicker
             value={settings.default_voice_preset}
-            onChange={(e) => setSettings({ ...settings, default_voice_preset: e.target.value })}
-            placeholder="none"
-            className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white placeholder:text-white/30"
+            onChange={(id) => setSettings({ ...settings, default_voice_preset: id })}
+            compact
           />
         </label>
 

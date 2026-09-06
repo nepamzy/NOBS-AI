@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "../api/client";
-import type { Project } from "../api/types";
+import type { Project, VoicePreset } from "../api/types";
+import { DurationPicker } from "../components/DurationPicker";
+import { VoicePicker } from "../components/VoicePicker";
 
 const STEPS = ["Topic", "Details", "Review"];
 
@@ -9,6 +11,7 @@ export function CreateVideo() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [voicePresets, setVoicePresets] = useState<VoicePreset[]>([]);
   const [projectId, setProjectId] = useState<string>("");
   const [newProjectName, setNewProjectName] = useState("");
   const [topic, setTopic] = useState("");
@@ -21,6 +24,7 @@ export function CreateVideo() {
 
   useEffect(() => {
     api.listProjects().then(setProjects).catch(() => setProjects([]));
+    api.listVoices().then(setVoicePresets).catch(() => setVoicePresets([]));
     api
       .getSettings()
       .then((s) => {
@@ -60,6 +64,7 @@ export function CreateVideo() {
   const projectLabel = projectId
     ? (projects.find((p) => p.id === projectId)?.name ?? "")
     : newProjectName || topic.slice(0, 60) || "(untitled)";
+  const voiceLabel = voicePresets.find((p) => p.id === voicePreset)?.name ?? (voicePreset || "default");
 
   return (
     <div className="max-w-2xl">
@@ -149,37 +154,25 @@ export function CreateVideo() {
               </label>
             )}
 
-            <div className="grid grid-cols-3 gap-4">
-              <label className="flex flex-col gap-1.5">
-                <span className="text-sm text-white/70">Duration (min)</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={durationMinutes}
-                  onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                  className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white"
-                />
-              </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-sm text-white/70">Voice</span>
-                <input
-                  value={voicePreset}
-                  onChange={(e) => setVoicePreset(e.target.value)}
-                  placeholder="default"
-                  className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white placeholder:text-white/30"
-                />
-              </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-sm text-white/70">Style</span>
-                <input
-                  value={stylePreset}
-                  onChange={(e) => setStylePreset(e.target.value)}
-                  placeholder="default"
-                  className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white placeholder:text-white/30"
-                />
-              </label>
-            </div>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm text-white/70">Duration</span>
+              <DurationPicker minutes={durationMinutes} onChange={setDurationMinutes} />
+            </label>
+
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm text-white/70">Voice</span>
+              <VoicePicker value={voicePreset} onChange={setVoicePreset} />
+            </label>
+
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm text-white/70">Style</span>
+              <input
+                value={stylePreset}
+                onChange={(e) => setStylePreset(e.target.value)}
+                placeholder="default"
+                className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white placeholder:text-white/30"
+              />
+            </label>
           </>
         )}
 
@@ -189,7 +182,7 @@ export function CreateVideo() {
               <Row label="Topic" value={topic} />
               <Row label="Project" value={projectLabel} />
               <Row label="Duration" value={`${durationMinutes} min`} />
-              <Row label="Voice" value={voicePreset || "default"} />
+              <Row label="Voice" value={voiceLabel} />
               <Row label="Style" value={stylePreset || "default"} />
               <Row label="Research" value={runResearch ? "Yes, research first" : "Skip research"} />
             </dl>
