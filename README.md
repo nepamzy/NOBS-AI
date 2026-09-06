@@ -88,7 +88,21 @@ Postgres server as `DATABASE_URL` (never touching `nobs_ai` itself), so a
 reachable Postgres is the only thing they need — no Redis, no worker, no LLM
 config. Job enqueueing is stubbed out in API tests.
 
-## What actually runs vs. what's gated
+## Containers (prepared, not build-tested)
+
+`apps/api/Dockerfile` and `apps/worker/Dockerfile` exist, mirroring the
+local dev setup above exactly (same requirements.txt, same PYTHONPATH
+layout). **They have not been through a real `docker build`** — this
+sandbox has no Docker daemon to verify against, so treat them as a
+starting point, not a validated deployment path. Build from the repo root
+so the build context includes `services/`:
+
+```
+docker build -f apps/api/Dockerfile -t nobs-ai-api .
+docker build -f apps/worker/Dockerfile -t nobs-ai-worker .
+```
+
+## Tests
 
 - **Free and real:** the API, database schema, job queue, and FFmpeg
   assembly code.
