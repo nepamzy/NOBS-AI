@@ -53,7 +53,8 @@ def _block(video, db: Session, stage: str, reason: str) -> None:
 
 def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bool) -> None:
     # local imports: avoid an apps/api <-> services import cycle
-    from app.models.enums import JobStatus, PipelineStage
+    from app.models.asset import Asset
+    from app.models.enums import AssetType, JobStatus, PipelineStage
     from app.models.research import Research
     from app.models.script import Scene, Script
     from app.models.video_clip import VideoClip
@@ -303,9 +304,109 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
         return
 
     if stage == PipelineStage.CAPTIONS:
-        _block(video, db, "captions", "Captions pipeline not yet implemented")
+        from pathlib import Path
+
+        from services.rendering.ffmpeg.assembler import AssemblyError, burn_in_captions
+        from services.rendering.ffmpeg.captions import build_cues, render_srt
+
+        script = db.query(Script).filter(Script.video_id == video.id).one()
+        scenes = script.scenes
+        voiceovers = {
+            v.scene_id: v for v in db.query(Voiceover).filter(Voiceover.video_id == video.id)
+        }
+
+        missing = [s.order for s in scenes if s.id not in voiceovers]
+        if missing:
+            _block(
+                video,
+                db,
+                "captions",
+                f"Scene(s) {missing} missing a voiceover — captions need every "
+                "scene's word timestamps",
+            )
+
+        # Each scene's offset on the final timeline is the sum of prior
+        # scenes' real (measured) voiceover durations — exactly what
+        # assembly conformed each scene's clip to, so this lines up without
+        # needing to re-measure anything from the assembled video.
+        scene_word_timestamps = []
+        offset = 0.0
+        for scene in scenes:
+            vo = voiceovers[scene.id]
+            scene_word_timestamps.append((offset, vo.word_timestamps))
+            offset += vo.duration_seconds
+
+        cues = build_cues(scene_word_timestamps)
+        srt_content = render_srt(cues)
+
+        output_dir = Path(ctx.storage_root) / str(video.id) / "assembly"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        subtitles_path = output_dir / "captions.srt"
+        subtitles_path.write_text(srt_content)
+
+        captioned_path = str(output_dir / "final_captioned.mp4")
+        try:
+            burn_in_captions(video.final_video_path, str(subtitles_path), captioned_path)
+        except AssemblyError as exc:
+            _block(video, db, "captions", f"ffmpeg caption burn-in failed: {exc}")
+
+        video.final_video_path = captioned_path
+        db.add(
+            Asset(
+                video_id=video.id,
+                asset_type=AssetType.CAPTIONS,
+                path=str(subtitles_path),
+                label="Captions",
+            )
+        )
+        video.stage = PipelineStage.THUMBNAIL
+        video.stage_detail = ""
+        db.commit()
+        return
 
     if stage == PipelineStage.THUMBNAIL:
-        _block(video, db, "thumbnail", "Thumbnail generation not yet implemented")
+        from pathlib import Path
+
+        from app.models.thumbnail import Thumbnail
+
+        from services.rendering.ffmpeg.assembler import AssemblyError, extract_frame
+
+        total_duration = sum(
+            v.duration_seconds
+            for v in db.query(Voiceover).filter(Voiceover.video_id == video.id)
+        )
+
+        output_dir = Path(ctx.storage_root) / str(video.id) / "assembly"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            # Three candidate frames pulled straight from the finished video
+            # as thumbnail options (A/B/C) — no separate paid image-generation
+            # step needed for a V1 thumbnail picker.
+            for label, fraction in (("A", 0.15), ("B", 0.5), ("C", 0.85)):
+                image_path = str(output_dir / f"thumbnail_{label}.jpg")
+                extract_frame(
+                    video.final_video_path, round(total_duration * fraction, 2), image_path
+                )
+                db.add(Thumbnail(video_id=video.id, image_path=image_path, variant_label=label))
+                db.add(
+                    Asset(
+                        video_id=video.id,
+                        asset_type=AssetType.THUMBNAIL,
+                        path=image_path,
+                        label=f"Thumbnail {label}",
+                    )
+                )
+        except AssemblyError as exc:
+            _block(video, db, "thumbnail", f"ffmpeg thumbnail extraction failed: {exc}")
+
+        video.stage = PipelineStage.COMPLETED
+        video.stage_detail = ""
+        db.commit()
+        return
+
+    if stage == PipelineStage.COMPLETED:
+        # Terminal state — nothing left to advance.
+        return
 
     _block(video, db, stage.value, "No handler for this stage")

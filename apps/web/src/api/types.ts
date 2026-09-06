@@ -34,6 +34,7 @@ export interface Video {
   stage_detail: string;
   storyboard_approved: boolean;
   final_video_path: string | null;
+  final_video_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -75,6 +76,7 @@ export interface Asset {
   video_id: string;
   asset_type: AssetType;
   path: string;
+  url: string | null;
   label: string;
   created_at: string;
 }

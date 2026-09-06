@@ -92,4 +92,43 @@ def mux_voiceover(video_path: str, audio_path: str, output_path: str) -> None:
 
 
 def burn_in_captions(video_path: str, subtitles_path: str, output_path: str) -> None:
-    raise NotImplementedError("Caption styling (Minimal/YouTube/Bold/...) not yet implemented")
+    """Burns an .srt onto the video (single plain style for V1 — see
+    services/rendering/ffmpeg/captions.py). Selectable styles
+    (Minimal/YouTube/Bold/Cinematic/Highlight, per CLAUDE.md) are future
+    work; this gets captions on screen at all."""
+    style = (
+        "FontSize=20,PrimaryColour=&HFFFFFF,BorderStyle=3,Outline=0,"
+        "Shadow=0,BackColour=&H80000000"
+    )
+    result = subprocess.run(
+        [
+            "ffmpeg", "-y",
+            "-i", video_path,
+            "-vf", f"subtitles={subtitles_path}:force_style='{style}'",
+            "-c:a", "copy",
+            output_path,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise AssemblyError(f"ffmpeg caption burn-in failed: {result.stderr}")
+
+
+def extract_frame(video_path: str, timestamp_seconds: float, output_path: str) -> None:
+    """Pulls a single frame from a finished video as a thumbnail candidate —
+    no separate paid image-generation step needed for a V1 A/B/C thumbnail
+    picker (CLAUDE.md Part 3 — Thumbnail generation)."""
+    result = subprocess.run(
+        [
+            "ffmpeg", "-y",
+            "-ss", str(timestamp_seconds),
+            "-i", video_path,
+            "-vframes", "1",
+            output_path,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise AssemblyError(f"ffmpeg frame extraction failed: {result.stderr}")

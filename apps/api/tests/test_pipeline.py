@@ -1,8 +1,12 @@
+from pathlib import Path
+
 import pytest
+from app.models.asset import Asset
 from app.models.enums import JobStatus, PipelineStage
 from app.models.project import Project
 from app.models.research import Research
 from app.models.script import Script
+from app.models.thumbnail import Thumbnail
 from app.models.user import User
 from app.models.video import Video
 from app.models.video_clip import VideoClip
@@ -315,3 +319,105 @@ def test_assembly_stage_conforms_and_muxes_each_scene_before_concatenating(db_se
 
     assert len(concat_calls) == 1
     assert len(concat_calls[0][0]) == 2  # both scenes' muxed clips concatenated
+
+
+def _advance_to_captions(db_session, monkeypatch):
+    """Drives a video through VOICE -> VIDEO_GENERATION -> ASSEMBLY with the
+    ffmpeg-backed assembler calls stubbed out (ffmpeg isn't installed in this
+    sandbox), landing on CAPTIONS with a final_video_path already set."""
+    video, ctx, fake_voice, fake_video = _advance_to_voice(db_session)
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VOICE -> VIDEO_GENERATION
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VIDEO_GENERATION -> ASSEMBLY
+
+    from services.rendering.ffmpeg import assembler
+
+    monkeypatch.setattr(assembler, "conform_clip_to_duration", lambda *a, **k: None)
+    monkeypatch.setattr(assembler, "mux_voiceover", lambda *a, **k: None)
+    monkeypatch.setattr(assembler, "concat_clips", lambda *a, **k: None)
+
+    advance_one_stage(video, db_session, ctx, run_research=True)  # ASSEMBLY -> CAPTIONS
+    assert video.stage.value == "captions"
+    return video, ctx, fake_voice, fake_video
+
+
+def test_captions_stage_builds_srt_from_real_word_timestamps_and_burns_it_in(
+    db_session, monkeypatch
+):
+    video, ctx, _fake_voice, _fake_video = _advance_to_captions(db_session, monkeypatch)
+
+    from services.rendering.ffmpeg import assembler
+
+    burn_calls = []
+    monkeypatch.setattr(
+        assembler,
+        "burn_in_captions",
+        lambda video_path, subtitles_path, output_path: burn_calls.append(
+            (video_path, subtitles_path, output_path)
+        ),
+    )
+
+    advance_one_stage(video, db_session, ctx, run_research=True)  # CAPTIONS -> THUMBNAIL
+
+    assert video.stage.value == "thumbnail"
+    assert len(burn_calls) == 1
+    _video_path, subtitles_path, output_path = burn_calls[0]
+    assert video.final_video_path == output_path  # captioned output replaces the prior final path
+
+    srt_content = Path(subtitles_path).read_text()
+    # both scenes' narration ("n1"/"n2" from _FakeScriptEngine) made it into
+    # the subtitle file, using the *measured* voiceover timestamps
+    assert "n1" in srt_content
+    assert "n2" in srt_content
+
+    assets = db_session.query(Asset).filter(Asset.video_id == video.id).all()
+    caption_assets = [a for a in assets if a.asset_type.value == "captions"]
+    assert len(caption_assets) == 1
+
+
+def test_thumbnail_stage_extracts_three_candidate_frames(db_session, monkeypatch):
+    video, ctx, _fake_voice, _fake_video = _advance_to_captions(db_session, monkeypatch)
+
+    from services.rendering.ffmpeg import assembler
+
+    monkeypatch.setattr(assembler, "burn_in_captions", lambda *a, **k: None)
+    advance_one_stage(video, db_session, ctx, run_research=True)  # CAPTIONS -> THUMBNAIL
+
+    extract_calls = []
+    monkeypatch.setattr(
+        assembler,
+        "extract_frame",
+        lambda video_path, timestamp_seconds, output_path: extract_calls.append(
+            (video_path, timestamp_seconds, output_path)
+        ),
+    )
+
+    advance_one_stage(video, db_session, ctx, run_research=True)  # THUMBNAIL -> COMPLETED
+
+    assert video.stage.value == "completed"
+    assert len(extract_calls) == 3
+    labels = {Path(c[2]).stem for c in extract_calls}
+    assert {"thumbnail_A", "thumbnail_B", "thumbnail_C"} == labels
+    # three distinct timestamps spread across the video, not all the same frame
+    assert len({c[1] for c in extract_calls}) == 3
+
+    thumbnails = db_session.query(Thumbnail).filter(Thumbnail.video_id == video.id).all()
+    assert len(thumbnails) == 3
+    assert {t.variant_label for t in thumbnails} == {"A", "B", "C"}
+
+
+def test_completed_stage_is_a_terminal_no_op(db_session, monkeypatch):
+    video, ctx, _fake_voice, _fake_video = _advance_to_captions(db_session, monkeypatch)
+
+    from services.rendering.ffmpeg import assembler
+
+    monkeypatch.setattr(assembler, "burn_in_captions", lambda *a, **k: None)
+    monkeypatch.setattr(assembler, "extract_frame", lambda *a, **k: None)
+
+    advance_one_stage(video, db_session, ctx, run_research=True)  # CAPTIONS -> THUMBNAIL
+    advance_one_stage(video, db_session, ctx, run_research=True)  # THUMBNAIL -> COMPLETED
+    assert video.stage.value == "completed"
+
+    detail_before = video.stage_detail
+    advance_one_stage(video, db_session, ctx, run_research=True)  # COMPLETED -> COMPLETED (no-op)
+    assert video.stage.value == "completed"
+    assert video.stage_detail == detail_before

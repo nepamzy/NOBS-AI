@@ -317,9 +317,11 @@ Open source tools identified:
 
 # PART 6 — CURRENT STATUS
 
-Stage: between 2 (UX/UI design) and 3 (backend foundation). UI direction is defined conceptually (Part 3 above). Backend foundation not yet started. No paid resources have been provisioned. No external accounts connected yet.
+Stage: 7 (Rendering engine) code-complete at the orchestration level; stages 3, 4, and 8 (backend foundation, AI orchestration, project management) are also built. Concretely: FastAPI + PostgreSQL + Redis/RQ backend, React/Vite frontend, and the full state machine (Topic → Research → Script → Storyboard → Approval → Voice → Video Generation → Assembly → Captions → Thumbnail → Completed) all exist and are tested. Voice and video generation run per scene, each clip's requested duration is synced to its scene's *measured* voiceover length (not the script's estimate), and assembly conforms clips to that length before muxing/concatenating — no drift, no manual cut-and-join. Captions burn in from real word-timestamp data; thumbnails are extracted frames (A/B/C), no paid image-gen needed.
 
-**Next action:** confirm tech stack specifics with Nobert if needed, then begin Stage 3 — backend foundation (DB schema, project skeleton, API scaffold) — all local/free work, no approval needed to start.
+**What's still gated, not started:** stages 5 and 6 (Voice engine, Video engine) have their abstractions and adapters (`services/voice/chatterbox`, `services/video/wan`) but no real provider is connected — `ChatterboxEngine`/`WanEngine` raise `ApprovalRequiredError` on first real use, exactly as designed, until Nobert approves a specific spend and provides `CHATTERBOX_API_URL` or `RUNPOD_API_KEY`/`WAN_ENDPOINT_ID` (or an ElevenLabs key, if that's the voice path chosen — see chat history on cost). No paid resources have been provisioned. No external accounts connected yet. Stage 9 (testing with real generated video) can't start until one of those is wired.
+
+**Next action:** Nobert decides voice provider (Chatterbox self-hosted/free vs. ElevenLabs paid) and video provider (Wan/Runpod), approves the specific cost, and provides the corresponding `.env` value — that's the one remaining blocker before a real end-to-end video can be produced.
 
 ---
 

@@ -1,5 +1,8 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.routers import health, projects, spend, styles, videos, voices
@@ -21,3 +24,9 @@ app.include_router(spend.router)
 app.include_router(styles.router)
 app.include_router(videos.router)
 app.include_router(voices.router)
+
+# Serves generated voiceovers/clips/captions/thumbnails/final videos so the
+# frontend can actually load them (see app/storage.py) — only meaningful for
+# STORAGE_BACKEND=local; an S3 backend wouldn't need this mount at all.
+Path(settings.local_storage_root).mkdir(parents=True, exist_ok=True)
+app.mount("/storage", StaticFiles(directory=settings.local_storage_root), name="storage")

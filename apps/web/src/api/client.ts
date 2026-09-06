@@ -13,6 +13,13 @@ import type {
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
+// Video/Asset urls (e.g. "/storage/...") come back relative to the API
+// server, not the frontend dev server — this makes them fetchable.
+export function resolveStorageUrl(url: string | null): string | null {
+  if (!url) return null;
+  return `${BASE_URL}${url}`;
+}
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {

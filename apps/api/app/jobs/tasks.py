@@ -37,6 +37,7 @@ def advance_pipeline(video_id: str, run_research: bool) -> str:
     """
     db = SessionLocal()
     try:
+        from app.models.enums import PipelineStage
         from app.models.video import Video
 
         video = db.get(Video, uuid.UUID(video_id))
@@ -44,12 +45,17 @@ def advance_pipeline(video_id: str, run_research: bool) -> str:
             return f"video {video_id} not found"
 
         ctx = _build_context()
+        terminal = {PipelineStage.COMPLETED, PipelineStage.FAILED}
         for _ in range(_MAX_STAGES_PER_JOB):
+            if video.stage in terminal:
+                break
             try:
                 advance_one_stage(video, db, ctx, run_research=run_research)
             except PipelineBlocked as blocked:
                 return f"blocked at {blocked.stage}: {blocked.reason}"
 
+        if video.stage in terminal:
+            return f"{video.stage.value}"
         return f"reached {video.stage.value} (stage limit for one job run)"
     finally:
         db.close()

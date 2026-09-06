@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, computed_field
 
 from app.models.enums import PipelineStage
+from app.storage import to_url
 
 
 class VideoCreate(BaseModel):
@@ -32,3 +33,8 @@ class VideoRead(BaseModel):
     final_video_path: str | None
     created_at: datetime
     updated_at: datetime
+
+    @computed_field
+    @property
+    def final_video_url(self) -> str | None:
+        return to_url(self.final_video_path)

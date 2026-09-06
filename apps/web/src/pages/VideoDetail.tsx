@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api, ApiError } from "../api/client";
+import { api, ApiError, resolveStorageUrl } from "../api/client";
 import type { Asset, Script, Video } from "../api/types";
 import { LoadingState } from "../components/LoadingState";
 import { PipelineProgress, PipelineStatus, StageBlockedNotice } from "../components/PipelineStatus";
@@ -96,6 +96,16 @@ export function VideoDetail() {
       </div>
       <StageBlockedNotice detail={video.stage_detail} />
 
+      {video.final_video_url && (
+        <div className="mt-6">
+          <video
+            controls
+            src={resolveStorageUrl(video.final_video_url) ?? undefined}
+            className="w-full rounded-lg border border-white/10 bg-black"
+          />
+        </div>
+      )}
+
       {script && (
         <div className="mt-8">
           <h2 className="font-heading text-lg font-medium text-white">{script.title}</h2>
@@ -162,7 +172,18 @@ export function VideoDetail() {
                 className="flex items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm"
               >
                 <span className="text-white">{asset.label || ASSET_LABELS[asset.asset_type]}</span>
-                <span className="text-xs text-white/40">{asset.path}</span>
+                {asset.url ? (
+                  <a
+                    href={resolveStorageUrl(asset.url) ?? undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-accent-400 hover:underline"
+                  >
+                    Open
+                  </a>
+                ) : (
+                  <span className="text-xs text-white/40">{asset.path}</span>
+                )}
               </li>
             ))}
           </ul>
