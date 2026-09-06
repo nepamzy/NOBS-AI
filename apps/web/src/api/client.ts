@@ -10,6 +10,7 @@ import type {
   SignupPin,
   SpendSummary,
   StylePreset,
+  TokenPackage,
   Video,
   VoicePreset,
 } from "./types";
@@ -150,4 +151,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ amount }),
     }),
+
+  listPackages: () => request<TokenPackage[]>("/payments/packages"),
 };

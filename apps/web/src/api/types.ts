@@ -153,3 +153,10 @@ export interface SignupPin {
   code: string;
   expires_at: string;
 }
+
+export interface TokenPackage {
+  id: string;
+  name: string;
+  tokens: number;
+  price_usd: number;
+}

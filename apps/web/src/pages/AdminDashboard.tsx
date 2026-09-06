@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
-import type { AdminUser, SignupPin } from "../api/types";
+import type { AdminUser, SignupPin, TokenPackage } from "../api/types";
 import { LoadingState } from "../components/LoadingState";
 
 export function AdminDashboard() {
@@ -26,6 +26,8 @@ export function AdminDashboard() {
       </p>
 
       <PinGenerator />
+
+      <PackagesPreview />
 
       <h2 className="mt-10 mb-3 text-sm font-medium uppercase tracking-wide text-white/50">
         Users
@@ -108,6 +110,37 @@ function PinGenerator() {
           </span>
         </div>
       )}
+    </div>
+  );
+}
+
+function PackagesPreview() {
+  const [packages, setPackages] = useState<TokenPackage[] | null>(null);
+
+  useEffect(() => {
+    api.listPackages().then(setPackages).catch(() => setPackages([]));
+  }, []);
+
+  if (!packages || packages.length === 0) return null;
+
+  return (
+    <div className="mt-6 rounded-lg border border-white/10 bg-white/5 p-5">
+      <h2 className="font-heading text-base font-semibold text-white">Token packages (draft)</h2>
+      <p className="mt-1 text-sm text-white/60">
+        Placeholder pricing only — nothing here is purchasable yet, no payment provider is
+        connected. Adjust these anytime in <code className="text-white/80">services/payments/packages.py</code>.
+      </p>
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        {packages.map((pkg) => (
+          <div key={pkg.id} className="rounded-md border border-white/10 bg-black/20 p-3">
+            <div className="text-sm font-medium text-white">{pkg.name}</div>
+            <div className="mt-1 text-xs text-white/50">{pkg.tokens} tokens</div>
+            <div className="mt-2 text-lg font-semibold text-accent-400">
+              ${pkg.price_usd.toFixed(2)}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

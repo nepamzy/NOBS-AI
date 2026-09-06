@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.bootstrap import ensure_admin_exists
 from app.config import settings
 from app.db import SessionLocal
-from app.routers import admin, auth, health, projects, spend, styles, videos, voices
+from app.routers import admin, auth, health, payments, projects, spend, styles, videos, voices
 from app.routers import settings as settings_router
 
 
@@ -35,6 +35,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(admin.router)
+app.include_router(payments.router)
 app.include_router(projects.router)
 app.include_router(settings_router.router)
 app.include_router(spend.router)
