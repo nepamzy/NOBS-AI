@@ -6,7 +6,7 @@ from app.models.video import Video
 
 
 def test_video_pipeline_defaults_and_relationships(db_session):
-    user = User(email="nobert@local", display_name="Nobert")
+    user = User(email="nobert@local", display_name="Nobert", password_hash="test-hash")
     db_session.add(user)
     db_session.flush()
 
@@ -29,7 +29,7 @@ def test_video_pipeline_defaults_and_relationships(db_session):
 
 
 def test_script_scenes_ordered_and_cascade_delete(db_session):
-    user = User(email="nobert@local", display_name="Nobert")
+    user = User(email="nobert@local", display_name="Nobert", password_hash="test-hash")
     db_session.add(user)
     db_session.flush()
     project = Project(owner_id=user.id, name="Test Project")

@@ -1,14 +1,29 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from app.bootstrap import ensure_admin_exists
 from app.config import settings
-from app.routers import health, projects, spend, styles, videos, voices
+from app.db import SessionLocal
+from app.routers import admin, auth, health, projects, spend, styles, videos, voices
 from app.routers import settings as settings_router
 
-app = FastAPI(title="NOBS AI API", version="0.1.0")
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    db = SessionLocal()
+    try:
+        ensure_admin_exists(db)
+    finally:
+        db.close()
+    yield
+
+
+app = FastAPI(title="NOBS AI API", version="0.1.0", lifespan=_lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -18,6 +33,8 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(auth.router)
+app.include_router(admin.router)
 app.include_router(projects.router)
 app.include_router(settings_router.router)
 app.include_router(spend.router)

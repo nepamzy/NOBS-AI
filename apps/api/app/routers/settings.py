@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.auth.deps import get_current_user
 from app.db import get_db
+from app.models.user import User
 from app.models.user_setting import UserSetting
 from app.schemas.settings import SettingsRead, SettingsUpdate
-from app.single_user import get_or_create_single_user
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -37,14 +38,18 @@ def _to_read(values: dict[str, str]) -> SettingsRead:
 
 
 @router.get("", response_model=SettingsRead)
-def get_settings(db: Session = Depends(get_db)) -> SettingsRead:
-    user = get_or_create_single_user(db)
+def get_settings(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> SettingsRead:
     return _to_read(_load_values(db, user.id))
 
 
 @router.put("", response_model=SettingsRead)
-def update_settings(payload: SettingsUpdate, db: Session = Depends(get_db)) -> SettingsRead:
-    user = get_or_create_single_user(db)
+def update_settings(
+    payload: SettingsUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> SettingsRead:
     updates = payload.model_dump(exclude_unset=True)
 
     for key, value in updates.items():

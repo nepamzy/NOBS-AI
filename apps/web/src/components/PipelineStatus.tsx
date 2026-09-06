@@ -4,6 +4,7 @@ const STAGE_ORDER: { key: PipelineStage; label: string }[] = [
   { key: "research", label: "Research" },
   { key: "script", label: "Script" },
   { key: "storyboard_review", label: "Storyboard" },
+  { key: "compliance_check", label: "Compliance" },
   { key: "voice", label: "Voice" },
   { key: "video_generation", label: "Video" },
   { key: "assembly", label: "Assembly" },

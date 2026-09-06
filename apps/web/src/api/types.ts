@@ -6,6 +6,7 @@ export type PipelineStage =
   | "research"
   | "script"
   | "storyboard_review"
+  | "compliance_check"
   | "voice"
   | "video_generation"
   | "assembly"
@@ -129,4 +130,26 @@ export interface StylePreset {
   name: string;
   description: string;
   accent_hex: string;
+}
+
+export type UserRole = "admin" | "user";
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  display_name: string;
+  role: UserRole;
+  is_suspended: boolean;
+  token_balance: number;
+  created_at: string;
+}
+
+export interface AuthResponse {
+  token: string;
+  user: AdminUser;
+}
+
+export interface SignupPin {
+  code: string;
+  expires_at: string;
 }

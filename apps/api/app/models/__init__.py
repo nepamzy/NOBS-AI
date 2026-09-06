@@ -1,4 +1,6 @@
 from app.models.asset import Asset
+from app.models.auth import AuthSession, SignupPin
+from app.models.compliance import ComplianceReport
 from app.models.cost_entry import CostEntry
 from app.models.jobs import GenerationJob, RenderJob
 from app.models.project import Project
@@ -13,6 +15,8 @@ from app.models.voiceover import Voiceover
 
 __all__ = [
     "Asset",
+    "AuthSession",
+    "ComplianceReport",
     "CostEntry",
     "GenerationJob",
     "RenderJob",
@@ -21,6 +25,7 @@ __all__ = [
     "ResearchSource",
     "Scene",
     "Script",
+    "SignupPin",
     "Thumbnail",
     "User",
     "UserSetting",

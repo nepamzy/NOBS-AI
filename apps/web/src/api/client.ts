@@ -1,10 +1,13 @@
 import type {
+  AdminUser,
   Asset,
+  AuthResponse,
   CostCategory,
   Project,
   Scene,
   Script,
   Settings,
+  SignupPin,
   SpendSummary,
   StylePreset,
   Video,
@@ -12,12 +15,37 @@ import type {
 } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const TOKEN_STORAGE_KEY = "nobs_ai_token";
 
 // Video/Asset urls (e.g. "/storage/...") come back relative to the API
 // server, not the frontend dev server — this makes them fetchable.
 export function resolveStorageUrl(url: string | null): string | null {
   if (!url) return null;
   return `${BASE_URL}${url}`;
+}
+
+export function getStoredToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function storeToken(token: string): void {
+  try {
+    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  } catch {
+    // localStorage unavailable (private mode etc.) — session just won't persist across reloads
+  }
+}
+
+export function clearStoredToken(): void {
+  try {
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // see storeToken
+  }
 }
 
 export class ApiError extends Error {
@@ -29,9 +57,14 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = getStoredToken();
   const response = await fetch(`${BASE_URL}${path}`, {
     ...options,
-    headers: { "Content-Type": "application/json", ...options.headers },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
   });
 
   if (!response.ok) {
@@ -94,4 +127,27 @@ export const api = {
 
   listVoices: () => request<VoicePreset[]>("/voices"),
   listStyles: () => request<StylePreset[]>("/styles"),
+
+  signup: (payload: {
+    pin_code: string;
+    email: string;
+    password: string;
+    display_name: string;
+  }) => request<AuthResponse>("/auth/signup", { method: "POST", body: JSON.stringify(payload) }),
+  login: (payload: { email: string; password: string }) =>
+    request<AuthResponse>("/auth/login", { method: "POST", body: JSON.stringify(payload) }),
+  logout: () => request<void>("/auth/logout", { method: "POST" }),
+  me: () => request<AdminUser>("/auth/me"),
+
+  generatePin: () => request<SignupPin>("/admin/pins", { method: "POST" }),
+  listUsers: () => request<AdminUser[]>("/admin/users"),
+  suspendUser: (id: string) => request<AdminUser>(`/admin/users/${id}/suspend`, { method: "POST" }),
+  unsuspendUser: (id: string) =>
+    request<AdminUser>(`/admin/users/${id}/unsuspend`, { method: "POST" }),
+  deleteUser: (id: string) => request<void>(`/admin/users/${id}`, { method: "DELETE" }),
+  grantTokens: (id: string, amount: number) =>
+    request<AdminUser>(`/admin/users/${id}/grant-tokens`, {
+      method: "POST",
+      body: JSON.stringify({ amount }),
+    }),
 };

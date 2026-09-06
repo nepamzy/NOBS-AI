@@ -68,11 +68,25 @@ def db_session(db_engine) -> Session:
 def client(db_session, monkeypatch):
     """TestClient wired to the transactional db_session instead of a real
     connection pool, with job enqueueing stubbed out — API tests shouldn't
-    need Redis/a worker running to verify request/response behavior."""
+    need Redis/a worker running to verify request/response behavior.
+
+    Pre-authenticated as an admin user (matching the old implicit
+    single-user semantics — Nobert is the primary/default user of the
+    app), so existing tests didn't need to change when auth was added. Use
+    the `client_as` fixture for a non-admin user."""
+    from datetime import UTC, datetime, timedelta
+
     import app.routers.videos as videos_router
+    from app.auth.security import generate_session_token, hash_lookup_value, hash_password
+    from app.config import settings
     from app.db import get_db
     from app.main import app
+    from app.models.auth import AuthSession
+    from app.models.enums import UserRole
+    from app.models.user import User
     from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(settings, "secret_key", "test-secret-key")
 
     enqueued: list[dict] = []
 
@@ -86,8 +100,28 @@ def client(db_session, monkeypatch):
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
-    test_client = TestClient(app)
+
+    admin = User(
+        email="nobert@local",
+        display_name="Nobert",
+        password_hash=hash_password("test-password"),
+        role=UserRole.ADMIN,
+    )
+    db_session.add(admin)
+    db_session.flush()
+    token = generate_session_token()
+    db_session.add(
+        AuthSession(
+            user_id=admin.id,
+            token_hash=hash_lookup_value(token),
+            expires_at=datetime.now(UTC) + timedelta(days=1),
+        )
+    )
+    db_session.flush()
+
+    test_client = TestClient(app, headers={"Authorization": f"Bearer {token}"})
     test_client.enqueued_jobs = enqueued  # type: ignore[attr-defined]
+    test_client.admin_user = admin  # type: ignore[attr-defined]
 
     yield test_client
 

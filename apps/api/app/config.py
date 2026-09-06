@@ -22,5 +22,15 @@ class Settings(BaseSettings):
 
     chatterbox_api_url: str = ""
 
+    # --- Auth ---
+    # Peppers PIN-code and session-token hashes so a stolen DB dump alone
+    # doesn't reveal valid codes/tokens. Must be set for auth to work at all
+    # (see app/bootstrap.py) — no insecure default.
+    secret_key: str = ""
+    # Bootstraps the one ADMIN account on first startup (see app/bootstrap.py).
+    # Only used when no ADMIN user exists yet; ignored after that.
+    admin_email: str = ""
+    admin_password: str = ""
+
 
 settings = Settings()

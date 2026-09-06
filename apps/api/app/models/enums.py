@@ -8,6 +8,7 @@ class PipelineStage(str, enum.Enum):
     RESEARCH = "research"
     SCRIPT = "script"
     STORYBOARD_REVIEW = "storyboard_review"
+    COMPLIANCE_CHECK = "compliance_check"
     VOICE = "voice"
     VIDEO_GENERATION = "video_generation"
     ASSEMBLY = "assembly"
@@ -38,6 +39,17 @@ class TransitionType(str, enum.Enum):
     CUT = "cut"
     FADE = "fade"
     DISSOLVE = "dissolve"
+
+
+class UserRole(str, enum.Enum):
+    """ADMIN is Nobert (the only role that can generate signup PINs, and see
+    every user's account for moderation). USER is anyone who signed up with
+    a PIN Nobert issued them — fully separate, private data from ADMIN's own
+    projects/videos; ADMIN's oversight is account-level (suspend/delete),
+    not access to their creative content."""
+
+    ADMIN = "admin"
+    USER = "user"
 
 
 class CostCategory(str, enum.Enum):

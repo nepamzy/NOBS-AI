@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import type { Project, Video } from "../api/types";
+import { useAuth } from "../auth/AuthContext";
 import { StatCard } from "../components/StatCard";
 
 function startOfWeek(now: Date): Date {
@@ -14,6 +15,7 @@ function startOfWeek(now: Date): Date {
 }
 
 export function Dashboard() {
+  const { user } = useAuth();
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [videos, setVideos] = useState<Video[] | null>(null);
   const [weeklyGoal, setWeeklyGoal] = useState(3);
@@ -36,7 +38,9 @@ export function Dashboard() {
 
   return (
     <div>
-      <h1 className="font-heading text-2xl font-semibold text-white">Welcome back, Nobert</h1>
+      <h1 className="font-heading text-2xl font-semibold text-white">
+        Welcome back{user ? `, ${user.display_name}` : ""}
+      </h1>
       <p className="mt-1 text-white/60">Here's where your videos stand.</p>
 
       <div className="mt-6 grid grid-cols-3 gap-4">

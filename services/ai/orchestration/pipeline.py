@@ -137,6 +137,56 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
     if stage == PipelineStage.STORYBOARD_REVIEW:
         if not video.storyboard_approved:
             _block(video, db, "storyboard_review", "Awaiting storyboard approval")
+        video.stage = PipelineStage.COMPLIANCE_CHECK
+        video.stage_detail = ""
+        db.commit()
+        return
+
+    if stage == PipelineStage.COMPLIANCE_CHECK:
+        from app.models.compliance import ComplianceReport
+        from app.models.project import Project
+        from app.models.video import Video as VideoModel
+
+        from services.compliance.checker import check_script
+
+        script = db.query(Script).filter(Script.video_id == video.id).one()
+        scenes = script.scenes
+
+        owner_id = db.query(Project.owner_id).filter(Project.id == video.project_id).scalar()
+        previous_titles = [
+            title
+            for (title,) in db.query(Script.title)
+            .join(VideoModel, VideoModel.id == Script.video_id)
+            .join(Project, Project.id == VideoModel.project_id)
+            .filter(Project.owner_id == owner_id, VideoModel.id != video.id)
+            .all()
+        ]
+
+        result = check_script(
+            title=script.title,
+            hook=script.hook,
+            scene_narrations=[s.narration for s in scenes],
+            previous_titles=previous_titles,
+        )
+
+        db.add(
+            ComplianceReport(
+                video_id=video.id,
+                passed=result.passed,
+                blockers=result.blockers,
+                warnings=result.warnings,
+            )
+        )
+        db.commit()
+
+        if not result.passed:
+            _block(
+                video,
+                db,
+                "compliance_check",
+                "Compliance check failed:\n" + "\n".join(f"- {b}" for b in result.blockers),
+            )
+
         video.stage = PipelineStage.VOICE
         video.stage_detail = ""
         db.commit()

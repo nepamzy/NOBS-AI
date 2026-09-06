@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 from app.models.asset import Asset
+from app.models.compliance import ComplianceReport
 from app.models.enums import JobStatus, PipelineStage
 from app.models.project import Project
 from app.models.research import Research
@@ -23,7 +24,7 @@ from services.voice.engine import VoiceEngine, VoiceoverResult
 
 
 def _make_video(db_session, topic="topic", duration=60) -> Video:
-    user = User(email="nobert@local", display_name="Nobert")
+    user = User(email="nobert@local", display_name="Nobert", password_hash="test-hash")
     db_session.add(user)
     db_session.flush()
     project = Project(owner_id=user.id, name="p")
@@ -120,7 +121,9 @@ def test_full_free_path_reaches_storyboard_review_and_waits_for_approval(db_sess
 
     video.storyboard_approved = True
     db_session.flush()
-    advance_one_stage(video, db_session, ctx, run_research=True)  # STORYBOARD_REVIEW -> VOICE
+    advance_one_stage(video, db_session, ctx, run_research=True)  # -> COMPLIANCE_CHECK
+    assert video.stage.value == "compliance_check"
+    advance_one_stage(video, db_session, ctx, run_research=True)  # COMPLIANCE_CHECK -> VOICE
     assert video.stage.value == "voice"
     assert video.stage_detail == ""  # cleared, not left over from storyboard_review
 
@@ -194,7 +197,8 @@ def _advance_to_voice(db_session):
     advance_one_stage(video, db_session, ctx, run_research=True)  # SCRIPT -> STORYBOARD_REVIEW
     video.storyboard_approved = True
     db_session.flush()
-    advance_one_stage(video, db_session, ctx, run_research=True)  # STORYBOARD_REVIEW -> VOICE
+    advance_one_stage(video, db_session, ctx, run_research=True)  # -> COMPLIANCE_CHECK
+    advance_one_stage(video, db_session, ctx, run_research=True)  # COMPLIANCE_CHECK -> VOICE
     return video, ctx, fake_voice, fake_video
 
 
@@ -237,7 +241,8 @@ def test_voice_stage_blocks_without_losing_scenes_already_synthesized(db_session
     advance_one_stage(video, db_session, ctx, run_research=True)  # SCRIPT -> STORYBOARD_REVIEW
     video.storyboard_approved = True
     db_session.flush()
-    advance_one_stage(video, db_session, ctx, run_research=True)  # STORYBOARD_REVIEW -> VOICE
+    advance_one_stage(video, db_session, ctx, run_research=True)  # -> COMPLIANCE_CHECK
+    advance_one_stage(video, db_session, ctx, run_research=True)  # COMPLIANCE_CHECK -> VOICE
 
     with pytest.raises(PipelineBlocked) as exc_info:
         advance_one_stage(video, db_session, ctx, run_research=True)
@@ -421,3 +426,56 @@ def test_completed_stage_is_a_terminal_no_op(db_session, monkeypatch):
     advance_one_stage(video, db_session, ctx, run_research=True)  # COMPLETED -> COMPLETED (no-op)
     assert video.stage.value == "completed"
     assert video.stage_detail == detail_before
+
+
+def test_compliance_check_blocks_near_duplicate_title_for_same_owner(db_session):
+    user = User(email="dup@local", display_name="Dup", password_hash="test-hash")
+    db_session.add(user)
+    db_session.flush()
+    project = Project(owner_id=user.id, name="p")
+    db_session.add(project)
+    db_session.flush()
+
+    ctx = PipelineContext(
+        research_engine=_FakeResearchEngine(),
+        script_engine=_FakeScriptEngine(),
+        voice_engine=_FakeVoiceEngine(),
+        video_engine=_FakeVideoEngine(),
+        storage_root="./storage/local",
+    )
+
+    def _advance_to_compliance(video):
+        advance_one_stage(video, db_session, ctx, run_research=True)  # TOPIC -> RESEARCH
+        advance_one_stage(video, db_session, ctx, run_research=True)  # RESEARCH -> SCRIPT
+        advance_one_stage(video, db_session, ctx, run_research=True)  # SCRIPT -> STORYBOARD_REVIEW
+        video.storyboard_approved = True
+        db_session.flush()
+        advance_one_stage(video, db_session, ctx, run_research=True)  # -> COMPLIANCE_CHECK
+
+    video_one = Video(project_id=project.id, topic="topic one", target_duration_seconds=60)
+    db_session.add(video_one)
+    db_session.flush()
+    _advance_to_compliance(video_one)
+    advance_one_stage(video_one, db_session, ctx, run_research=True)  # passes: no prior videos
+    assert video_one.stage.value == "voice"
+
+    video_two = Video(project_id=project.id, topic="topic two", target_duration_seconds=60)
+    db_session.add(video_two)
+    db_session.flush()
+    _advance_to_compliance(video_two)
+
+    # _FakeScriptEngine always drafts the same title ("Title") — the second
+    # video's script is a 100% match against the first, exactly the
+    # "reused/repetitious content" pattern this check exists to catch.
+    with pytest.raises(PipelineBlocked) as exc_info:
+        advance_one_stage(video_two, db_session, ctx, run_research=True)
+    assert exc_info.value.stage == "compliance_check"
+    assert "similar to a previous video" in video_two.stage_detail
+
+    report = (
+        db_session.query(ComplianceReport)
+        .filter(ComplianceReport.video_id == video_two.id)
+        .one()
+    )
+    assert report.passed is False
+    assert len(report.blockers) == 1
