@@ -19,6 +19,7 @@ def _build_context() -> PipelineContext:
         voice_engine=ChatterboxEngine(settings.chatterbox_api_url),
         video_engine=WanEngine(settings.runpod_api_key, settings.wan_endpoint_id),
         storage_root=settings.local_storage_root,
+        music_library_path=settings.music_library_path,
     )
 
 

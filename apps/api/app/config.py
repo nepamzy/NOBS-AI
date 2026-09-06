@@ -11,6 +11,10 @@ class Settings(BaseSettings):
 
     storage_backend: str = "local"
     local_storage_root: str = "./storage/local"
+    # Folder Nobert drops downloaded YouTube Audio Library tracks into —
+    # there's no public API to pull them automatically (see chat history).
+    # Empty/missing folder just means videos assemble without music.
+    music_library_path: str = "./storage/music"
 
     cors_origins: str = "http://localhost:5173"
 

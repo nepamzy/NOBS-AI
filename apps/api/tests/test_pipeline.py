@@ -326,6 +326,64 @@ def test_assembly_stage_conforms_and_muxes_each_scene_before_concatenating(db_se
     assert len(concat_calls[0][0]) == 2  # both scenes' muxed clips concatenated
 
 
+def test_assembly_skips_music_when_library_is_empty(db_session, monkeypatch):
+    video, ctx, _fake_voice, _fake_video = _advance_to_voice(db_session)
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VOICE -> VIDEO_GENERATION
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VIDEO_GENERATION -> ASSEMBLY
+
+    from services.rendering.ffmpeg import assembler
+
+    monkeypatch.setattr(assembler, "conform_clip_to_duration", lambda *a, **k: None)
+    monkeypatch.setattr(assembler, "mux_voiceover", lambda *a, **k: None)
+    monkeypatch.setattr(assembler, "concat_clips", lambda *a, **k: None)
+    mix_calls = []
+    monkeypatch.setattr(
+        assembler,
+        "mix_background_music",
+        lambda *a, **k: mix_calls.append(a),
+    )
+
+    advance_one_stage(video, db_session, ctx, run_research=True)  # ASSEMBLY -> CAPTIONS
+
+    # ctx.music_library_path defaults to a folder that doesn't exist in
+    # tests — an empty/missing library must never block assembly.
+    assert video.stage.value == "captions"
+    assert video.music_track is None
+    assert mix_calls == []
+
+
+def test_assembly_mixes_music_when_library_has_tracks(db_session, monkeypatch, tmp_path):
+    (tmp_path / "song.mp3").write_bytes(b"")
+
+    video, ctx, _fake_voice, _fake_video = _advance_to_voice(db_session)
+    ctx.music_library_path = str(tmp_path)
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VOICE -> VIDEO_GENERATION
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VIDEO_GENERATION -> ASSEMBLY
+
+    from services.rendering.ffmpeg import assembler
+
+    monkeypatch.setattr(assembler, "conform_clip_to_duration", lambda *a, **k: None)
+    monkeypatch.setattr(assembler, "mux_voiceover", lambda *a, **k: None)
+    monkeypatch.setattr(assembler, "concat_clips", lambda *a, **k: None)
+    mix_calls = []
+    monkeypatch.setattr(
+        assembler,
+        "mix_background_music",
+        lambda video_path, music_path, output_path: mix_calls.append(
+            (video_path, music_path, output_path)
+        ),
+    )
+
+    advance_one_stage(video, db_session, ctx, run_research=True)  # ASSEMBLY -> CAPTIONS
+
+    assert video.stage.value == "captions"
+    assert video.music_track == "song.mp3"
+    assert len(mix_calls) == 1
+    _video_path, music_path, output_path = mix_calls[0]
+    assert music_path == str(tmp_path / "song.mp3")
+    assert video.final_video_path == output_path
+
+
 def _advance_to_captions(db_session, monkeypatch):
     """Drives a video through VOICE -> VIDEO_GENERATION -> ASSEMBLY with the
     ffmpeg-backed assembler calls stubbed out (ffmpeg isn't installed in this

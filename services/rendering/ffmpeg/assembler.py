@@ -91,6 +91,34 @@ def mux_voiceover(video_path: str, audio_path: str, output_path: str) -> None:
         raise AssemblyError(f"ffmpeg voiceover mux failed: {result.stderr}")
 
 
+def mix_background_music(
+    video_path: str, music_path: str, output_path: str, music_volume_db: float = -18.0
+) -> None:
+    """Loops the track under the video's existing (voiceover) audio at a low
+    volume — never replaces it. duration=first + the loop means the mix
+    always matches the video's length exactly, however long or short the
+    source track is."""
+    result = subprocess.run(
+        [
+            "ffmpeg", "-y",
+            "-i", video_path,
+            "-stream_loop", "-1",
+            "-i", music_path,
+            "-filter_complex",
+            f"[1:a]volume={music_volume_db}dB[music];"
+            "[0:a][music]amix=inputs=2:duration=first:dropout_transition=0[aout]",
+            "-map", "0:v",
+            "-map", "[aout]",
+            "-c:v", "copy",
+            output_path,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise AssemblyError(f"ffmpeg music mix failed: {result.stderr}")
+
+
 def burn_in_captions(video_path: str, subtitles_path: str, output_path: str) -> None:
     """Burns an .srt onto the video (single plain style for V1 — see
     services/rendering/ffmpeg/captions.py). Selectable styles

@@ -30,6 +30,7 @@ class PipelineContext:
     voice_engine: VoiceEngine
     video_engine: VideoEngine
     storage_root: str
+    music_library_path: str = "./storage/music"
 
 
 class PipelineBlocked(RuntimeError):
@@ -296,12 +297,17 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
     if stage == PipelineStage.ASSEMBLY:
         from pathlib import Path
 
+        from app.models.project import Project
+        from app.models.video import Video as VideoModel
+
         from services.rendering.ffmpeg.assembler import (
             AssemblyError,
             concat_clips,
             conform_clip_to_duration,
+            mix_background_music,
             mux_voiceover,
         )
+        from services.rendering.music_library import pick_track
 
         script = db.query(Script).filter(Script.video_id == video.id).one()
         scenes = script.scenes
@@ -344,6 +350,30 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
 
             final_path = str(output_dir / "final.mp4")
             concat_clips(scene_paths, final_path)
+
+            # Optional: never blocks a video. An empty/missing music library
+            # (nothing downloaded yet) just means no music this time.
+            owner_id = db.query(Project.owner_id).filter(Project.id == video.project_id).scalar()
+            recently_used = [
+                title
+                for (title,) in db.query(VideoModel.music_track)
+                .join(Project, Project.id == VideoModel.project_id)
+                .filter(
+                    Project.owner_id == owner_id,
+                    VideoModel.id != video.id,
+                    VideoModel.music_track.isnot(None),
+                )
+                .order_by(VideoModel.created_at.desc())
+                .limit(10)
+                .all()
+            ]
+            track = pick_track(ctx.music_library_path, recently_used)
+            if track is not None:
+                music_path = str(Path(ctx.music_library_path) / track)
+                mixed_path = str(output_dir / "final_with_music.mp4")
+                mix_background_music(final_path, music_path, mixed_path)
+                final_path = mixed_path
+                video.music_track = track
         except AssemblyError as exc:
             _block(video, db, "assembly", f"ffmpeg assembly failed: {exc}")
 

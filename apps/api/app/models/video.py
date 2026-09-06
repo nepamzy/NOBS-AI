@@ -45,6 +45,11 @@ class Video(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     storyboard_approved: Mapped[bool] = mapped_column(default=False)
 
     final_video_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    # Filename picked from the owner's music library folder (services/rendering
+    # /music_library.py) — recorded so the next video for the same owner can
+    # avoid picking the same track again. Null if the library was empty when
+    # this video was assembled (music mixing is optional, never blocking).
+    music_track: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     project: Mapped["Project"] = relationship(back_populates="videos")
     script: Mapped["Script | None"] = relationship(
