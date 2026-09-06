@@ -36,7 +36,7 @@ export function Dashboard() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-white">Welcome back, Nobert</h1>
+      <h1 className="font-heading text-2xl font-semibold text-white">Welcome back, Nobert</h1>
       <p className="mt-1 text-white/60">Here's where your videos stand.</p>
 
       <div className="mt-6 grid grid-cols-3 gap-4">
@@ -52,7 +52,7 @@ export function Dashboard() {
       {projects && projects.length === 0 && (
         <p className="text-white/50">
           No projects yet.{" "}
-          <Link to="/create" className="text-white underline">
+          <Link to="/create" className="font-medium text-accent-400 hover:text-accent-300">
             Create your first video
           </Link>
           .

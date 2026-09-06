@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { Project, Video } from "../api/types";
+import { LoadingState } from "../components/LoadingState";
 import { PipelineStatus } from "../components/PipelineStatus";
 
 export function ProjectDetail() {
@@ -15,11 +16,11 @@ export function ProjectDetail() {
     api.listVideos(projectId).then(setVideos);
   }, [projectId]);
 
-  if (!project) return null;
+  if (!project) return <LoadingState />;
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-white">{project.name}</h1>
+      <h1 className="font-heading text-2xl font-semibold text-white">{project.name}</h1>
 
       <ul className="mt-6 flex flex-col gap-3">
         {videos.map((video) => (

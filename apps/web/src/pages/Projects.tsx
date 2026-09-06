@@ -12,7 +12,7 @@ export function Projects() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-white">Projects</h1>
+      <h1 className="font-heading text-2xl font-semibold text-white">Projects</h1>
       <ul className="mt-6 flex flex-col gap-2">
         {projects.map((project) => (
           <li key={project.id}>

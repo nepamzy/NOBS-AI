@@ -11,10 +11,15 @@ const STAGE_ORDER: { key: PipelineStage; label: string }[] = [
   { key: "thumbnail", label: "Thumbnail" },
 ];
 
+function stageIndexOf(stage: PipelineStage): number {
+  if (stage === "completed") return STAGE_ORDER.length;
+  if (stage === "topic") return -1;
+  return STAGE_ORDER.findIndex((s) => s.key === stage);
+}
+
 function stageStatus(stage: PipelineStage, current: PipelineStage): "done" | "current" | "pending" {
-  const order = STAGE_ORDER.map((s) => s.key);
-  const currentIndex = current === "completed" ? order.length : order.indexOf(current);
-  const stageIndex = order.indexOf(stage);
+  const currentIndex = stageIndexOf(current);
+  const stageIndex = stageIndexOf(stage);
   if (stageIndex < currentIndex) return "done";
   if (stageIndex === currentIndex) return "current";
   return "pending";
@@ -28,11 +33,11 @@ export function PipelineStatus({ stage }: { stage: PipelineStage }) {
         return (
           <li
             key={key}
-            className={`rounded-full border px-3 py-1 text-xs ${
+            className={`rounded-full border px-3 py-1 text-xs font-medium ${
               status === "done"
                 ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
                 : status === "current"
-                  ? "border-amber-400/50 bg-amber-400/10 text-amber-300"
+                  ? "border-accent-400/50 bg-accent-500/15 text-accent-400"
                   : "border-white/10 bg-white/5 text-white/40"
             }`}
           >
@@ -41,6 +46,36 @@ export function PipelineStatus({ stage }: { stage: PipelineStage }) {
         );
       })}
     </ol>
+  );
+}
+
+/** Real, not fabricated: this is "how far through the pipeline's stages",
+ * derived from `stage` alone — not a within-stage completion percentage,
+ * since nothing in the pipeline currently produces one (voice/video
+ * generation aren't wired in yet). See CLAUDE.md's "no invented
+ * information" rule — this shows only what's actually known. */
+export function PipelineProgress({ stage }: { stage: PipelineStage }) {
+  const index = Math.max(0, stageIndexOf(stage));
+  const total = STAGE_ORDER.length;
+  const percent = stage === "completed" ? 100 : Math.round((index / total) * 100);
+  const label =
+    stage === "completed"
+      ? "Completed"
+      : `Step ${index + 1} of ${total}: ${STAGE_ORDER[index]?.label ?? stage}`;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs text-white/50">
+        <span>{label}</span>
+        <span>{percent}%</span>
+      </div>
+      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+        <div
+          className="h-full rounded-full bg-accent-500 transition-all duration-500"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+    </div>
   );
 }
 

@@ -148,12 +148,19 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
         )
 
     if stage == PipelineStage.VIDEO_GENERATION:
+        scene_count = (
+            db.query(Scene)
+            .join(Script)
+            .filter(Script.video_id == video.id)
+            .count()
+        )
         _block(
             video,
             db,
             "video_generation",
-            "Video generation not yet wired into the pipeline runner "
-            "(engine adapter exists; per-scene orchestration is a later step)",
+            f"0 of {scene_count} scene clips generated — video generation not "
+            "yet wired into the pipeline runner (engine adapter exists; "
+            "per-scene orchestration is a later step)",
         )
 
     if stage == PipelineStage.ASSEMBLY:
