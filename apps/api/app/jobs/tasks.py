@@ -5,9 +5,9 @@ import uuid
 
 from app.config import settings
 from app.db import SessionLocal
+from app.engines import get_script_engine
 from services.ai.orchestration.pipeline import PipelineBlocked, PipelineContext, advance_one_stage
 from services.ai.research.engine import ResearchEngine
-from services.ai.script.engine import ScriptEngine
 from services.video.wan.adapter import WanEngine
 from services.voice.chatterbox.adapter import ChatterboxEngine
 
@@ -15,7 +15,7 @@ from services.voice.chatterbox.adapter import ChatterboxEngine
 def _build_context() -> PipelineContext:
     return PipelineContext(
         research_engine=ResearchEngine(settings.llm_provider, settings.llm_api_key),
-        script_engine=ScriptEngine(settings.llm_provider, settings.llm_api_key),
+        script_engine=get_script_engine(),
         voice_engine=ChatterboxEngine(settings.chatterbox_api_url),
         video_engine=WanEngine(settings.runpod_api_key, settings.wan_endpoint_id),
         storage_root=settings.local_storage_root,

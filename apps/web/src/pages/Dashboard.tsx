@@ -1,16 +1,37 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
-import type { Project } from "../api/types";
+import type { Project, Video } from "../api/types";
 import { StatCard } from "../components/StatCard";
+
+// CLAUDE.md's V1 cost baseline (Part 4) is built around ~3 videos/week —
+// used here as the default goal until Settings can make it configurable.
+const WEEKLY_GOAL = 3;
+
+function startOfWeek(now: Date): Date {
+  const start = new Date(now);
+  const day = start.getDay(); // 0 = Sunday
+  const diffToMonday = day === 0 ? 6 : day - 1;
+  start.setDate(start.getDate() - diffToMonday);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
 
 export function Dashboard() {
   const [projects, setProjects] = useState<Project[] | null>(null);
+  const [videos, setVideos] = useState<Video[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.listProjects().then(setProjects).catch((e) => setError(String(e)));
+    api.listAllVideos().then(setVideos).catch(() => setVideos([]));
   }, []);
+
+  const weekStart = startOfWeek(new Date());
+  const thisWeekCount =
+    videos?.filter((v) => new Date(v.created_at) >= weekStart).length ?? 0;
+  const processingCount =
+    videos?.filter((v) => v.stage !== "completed" && v.stage !== "failed").length ?? 0;
 
   return (
     <div>
@@ -19,8 +40,8 @@ export function Dashboard() {
 
       <div className="mt-6 grid grid-cols-3 gap-4">
         <StatCard label="Projects" value={projects?.length ?? "—"} />
-        <StatCard label="This week" value="0 / 3" />
-        <StatCard label="Processing" value={0} />
+        <StatCard label="This week" value={`${thisWeekCount} / ${WEEKLY_GOAL}`} />
+        <StatCard label="Processing" value={processingCount} />
       </div>
 
       <h2 className="mt-8 mb-3 text-sm font-medium uppercase tracking-wide text-white/50">

@@ -57,3 +57,28 @@ class ScriptEngine:
                 )
             )
         raise NotImplementedError("LLM-backed script generation not yet implemented")
+
+    def regenerate_scene(
+        self,
+        topic: str,
+        scene: SceneDraft,
+        instructions: str = "",
+    ) -> SceneDraft:
+        """The "Regenerate" action on a single storyboard scene (CLAUDE.md:
+        Regenerate / Edit / Approve) — re-runs just that scene's narration +
+        visual_prompt through the LLM rather than the whole script. Same gate
+        as generate(): no call happens without a configured provider."""
+        if not self._llm_provider or not self._llm_api_key:
+            raise ApprovalRequiredError(
+                CostWarning(
+                    action=f"Regenerate scene {scene.order} for topic: {topic!r}",
+                    service="LLM provider (unconfigured)",
+                    expected_cost="COST UNKNOWN — no LLM_PROVIDER/LLM_API_KEY set",
+                    billing_type="per token (assumed)",
+                    max_expected_cost="Unknown until provider is chosen",
+                    risk="Unknown",
+                    why_needed="Regenerating a scene requires an LLM call to "
+                    "rewrite its narration and visual prompt.",
+                )
+            )
+        raise NotImplementedError("LLM-backed scene regeneration not yet implemented")

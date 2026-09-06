@@ -111,3 +111,31 @@ def test_update_scene_rejected_after_storyboard_approved(client, db_session):
 
     response = client.patch(f"/videos/{video_id}/scenes/{scene_id}", json={"narration": "x"})
     assert response.status_code == 409
+
+
+def test_regenerate_scene_blocked_without_llm_config(client, db_session):
+    video_id, scene_id = _make_video_with_script(client, db_session)
+
+    response = client.post(f"/videos/{video_id}/scenes/{scene_id}/regenerate")
+    assert response.status_code == 402
+    assert "PAYMENT / COST WARNING" in response.json()["detail"]
+
+
+def test_regenerate_scene_rejected_after_storyboard_approved(client, db_session):
+    from app.models.video import Video
+
+    video_id, scene_id = _make_video_with_script(client, db_session)
+    video = db_session.get(Video, video_id)
+    video.storyboard_approved = True
+    db_session.flush()
+
+    response = client.post(f"/videos/{video_id}/scenes/{scene_id}/regenerate")
+    assert response.status_code == 409
+
+
+def test_list_assets_empty_for_new_video(client, db_session):
+    video_id, _ = _make_video_with_script(client, db_session)
+
+    response = client.get(f"/videos/{video_id}/assets")
+    assert response.status_code == 200
+    assert response.json() == []

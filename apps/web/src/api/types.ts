@@ -61,3 +61,20 @@ export interface Script {
   created_at: string;
   updated_at: string;
 }
+
+export type AssetType =
+  | "script"
+  | "voiceover"
+  | "scene_clip"
+  | "thumbnail"
+  | "captions"
+  | "final_video";
+
+export interface Asset {
+  id: string;
+  video_id: string;
+  asset_type: AssetType;
+  path: string;
+  label: string;
+  created_at: string;
+}

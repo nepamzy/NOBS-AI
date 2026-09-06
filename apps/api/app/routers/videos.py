@@ -4,13 +4,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.engines import get_script_engine
 from app.jobs.queue import enqueue_pipeline_start
+from app.models.asset import Asset
 from app.models.enums import PipelineStage
 from app.models.project import Project
 from app.models.script import Scene, Script
 from app.models.video import Video
+from app.schemas.asset import AssetRead
 from app.schemas.script import SceneRead, SceneUpdate, ScriptRead
 from app.schemas.video import VideoCreate, VideoRead
+from services.ai.script.engine import SceneDraft
+from services.common.errors import ApprovalRequiredError
 
 router = APIRouter(prefix="/videos", tags=["videos"])
 
@@ -94,6 +99,57 @@ def update_scene(
     db.commit()
     db.refresh(scene)
     return scene
+
+
+@router.post("/{video_id}/scenes/{scene_id}/regenerate", response_model=SceneRead)
+def regenerate_scene(
+    video_id: uuid.UUID, scene_id: uuid.UUID, db: Session = Depends(get_db)
+) -> Scene:
+    """The "Regenerate" action on a storyboard scene (CLAUDE.md: Regenerate /
+    Edit / Approve) — re-runs this one scene through the script engine. Same
+    approval gate as the rest of the LLM-backed pipeline: if no provider is
+    configured, this raises 402 with the cost warning instead of an empty
+    500, so the frontend can show it the same way as any other blocked stage.
+    """
+    video = db.get(Video, video_id)
+    if video is None:
+        raise HTTPException(status_code=404, detail="Video not found")
+    if video.storyboard_approved:
+        raise HTTPException(
+            status_code=409, detail="Storyboard already approved — scene is no longer editable"
+        )
+
+    script = db.query(Script).filter(Script.video_id == video_id).one_or_none()
+    if script is None:
+        raise HTTPException(status_code=404, detail="Script not generated yet")
+
+    scene = db.get(Scene, scene_id)
+    if scene is None or scene.script_id != script.id:
+        raise HTTPException(status_code=404, detail="Scene not found on this video")
+
+    draft = SceneDraft(
+        order=scene.order,
+        narration=scene.narration,
+        visual_prompt=scene.visual_prompt,
+        duration_seconds=scene.duration_seconds,
+        transition=scene.transition.value,
+    )
+
+    try:
+        regenerated = get_script_engine().regenerate_scene(video.topic, draft)
+    except ApprovalRequiredError as exc:
+        raise HTTPException(status_code=402, detail=exc.cost_warning.render()) from exc
+
+    scene.narration = regenerated.narration
+    scene.visual_prompt = regenerated.visual_prompt
+    db.commit()
+    db.refresh(scene)
+    return scene
+
+
+@router.get("/{video_id}/assets", response_model=list[AssetRead])
+def list_assets(video_id: uuid.UUID, db: Session = Depends(get_db)) -> list[Asset]:
+    return db.query(Asset).filter(Asset.video_id == video_id).order_by(Asset.created_at).all()
 
 
 @router.post("/{video_id}/approve-storyboard", response_model=VideoRead)
