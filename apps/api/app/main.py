@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import health, projects, videos
+from app.routers import health, projects, spend, videos
 from app.routers import settings as settings_router
 
 app = FastAPI(title="NOBS AI API", version="0.1.0")
@@ -17,4 +17,5 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(projects.router)
 app.include_router(settings_router.router)
+app.include_router(spend.router)
 app.include_router(videos.router)

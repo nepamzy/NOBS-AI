@@ -85,3 +85,32 @@ export interface Settings {
   default_style_preset: string;
   weekly_goal: number;
 }
+
+export type CostCategory =
+  | "gpu"
+  | "llm"
+  | "tts"
+  | "video_generation"
+  | "storage"
+  | "database"
+  | "hosting"
+  | "networking"
+  | "domain"
+  | "other";
+
+export interface CostEntry {
+  id: string;
+  category: CostCategory;
+  service: string;
+  purpose: string;
+  video_id: string | null;
+  estimated_cost_usd: number | null;
+  actual_cost_usd: number | null;
+  occurred_at: string;
+}
+
+export interface SpendSummary {
+  entries: CostEntry[];
+  total_estimated_usd: number;
+  total_actual_usd: number;
+}

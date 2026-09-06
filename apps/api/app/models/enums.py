@@ -38,3 +38,18 @@ class TransitionType(str, enum.Enum):
     CUT = "cut"
     FADE = "fade"
     DISSOLVE = "dissolve"
+
+
+class CostCategory(str, enum.Enum):
+    """Matches CLAUDE.md Part 4's spend-tracking categories exactly."""
+
+    GPU = "gpu"
+    LLM = "llm"
+    TTS = "tts"
+    VIDEO_GENERATION = "video_generation"
+    STORAGE = "storage"
+    DATABASE = "database"
+    HOSTING = "hosting"
+    NETWORKING = "networking"
+    DOMAIN = "domain"
+    OTHER = "other"

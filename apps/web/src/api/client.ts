@@ -1,4 +1,13 @@
-import type { Asset, Project, Scene, Script, Settings, Video } from "./types";
+import type {
+  Asset,
+  CostCategory,
+  Project,
+  Scene,
+  Script,
+  Settings,
+  SpendSummary,
+  Video,
+} from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
@@ -64,4 +73,13 @@ export const api = {
   getSettings: () => request<Settings>("/settings"),
   updateSettings: (payload: Partial<Settings>) =>
     request<Settings>("/settings", { method: "PUT", body: JSON.stringify(payload) }),
+
+  getSpend: () => request<SpendSummary>("/spend"),
+  createSpendEntry: (payload: {
+    category: CostCategory;
+    service: string;
+    purpose: string;
+    estimated_cost_usd?: number | null;
+    actual_cost_usd?: number | null;
+  }) => request<void>("/spend", { method: "POST", body: JSON.stringify(payload) }),
 };

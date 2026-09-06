@@ -1,4 +1,5 @@
 from app.models.asset import Asset
+from app.models.cost_entry import CostEntry
 from app.models.jobs import GenerationJob, RenderJob
 from app.models.project import Project
 from app.models.research import Research, ResearchSource
@@ -12,6 +13,7 @@ from app.models.voiceover import Voiceover
 
 __all__ = [
     "Asset",
+    "CostEntry",
     "GenerationJob",
     "RenderJob",
     "Project",
