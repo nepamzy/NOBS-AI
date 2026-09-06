@@ -78,3 +78,10 @@ export interface Asset {
   label: string;
   created_at: string;
 }
+
+export interface Settings {
+  default_duration_minutes: number;
+  default_voice_preset: string;
+  default_style_preset: string;
+  weekly_goal: number;
+}

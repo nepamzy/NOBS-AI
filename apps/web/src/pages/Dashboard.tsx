@@ -4,10 +4,6 @@ import { api } from "../api/client";
 import type { Project, Video } from "../api/types";
 import { StatCard } from "../components/StatCard";
 
-// CLAUDE.md's V1 cost baseline (Part 4) is built around ~3 videos/week —
-// used here as the default goal until Settings can make it configurable.
-const WEEKLY_GOAL = 3;
-
 function startOfWeek(now: Date): Date {
   const start = new Date(now);
   const day = start.getDay(); // 0 = Sunday
@@ -20,11 +16,16 @@ function startOfWeek(now: Date): Date {
 export function Dashboard() {
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [videos, setVideos] = useState<Video[] | null>(null);
+  const [weeklyGoal, setWeeklyGoal] = useState(3);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.listProjects().then(setProjects).catch((e) => setError(String(e)));
     api.listAllVideos().then(setVideos).catch(() => setVideos([]));
+    api
+      .getSettings()
+      .then((s) => setWeeklyGoal(s.weekly_goal))
+      .catch(() => {});
   }, []);
 
   const weekStart = startOfWeek(new Date());
@@ -40,7 +41,7 @@ export function Dashboard() {
 
       <div className="mt-6 grid grid-cols-3 gap-4">
         <StatCard label="Projects" value={projects?.length ?? "—"} />
-        <StatCard label="This week" value={`${thisWeekCount} / ${WEEKLY_GOAL}`} />
+        <StatCard label="This week" value={`${thisWeekCount} / ${weeklyGoal}`} />
         <StatCard label="Processing" value={processingCount} />
       </div>
 

@@ -1,4 +1,4 @@
-import type { Asset, Project, Scene, Script, Video } from "./types";
+import type { Asset, Project, Scene, Script, Settings, Video } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
@@ -60,4 +60,8 @@ export const api = {
   regenerateScene: (videoId: string, sceneId: string) =>
     request<Scene>(`/videos/${videoId}/scenes/${sceneId}/regenerate`, { method: "POST" }),
   listAssets: (videoId: string) => request<Asset[]>(`/videos/${videoId}/assets`),
+
+  getSettings: () => request<Settings>("/settings"),
+  updateSettings: (payload: Partial<Settings>) =>
+    request<Settings>("/settings", { method: "PUT", body: JSON.stringify(payload) }),
 };

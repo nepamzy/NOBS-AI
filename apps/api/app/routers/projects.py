@@ -5,23 +5,10 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.project import Project
-from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectRead
+from app.single_user import get_or_create_single_user
 
 router = APIRouter(prefix="/projects", tags=["projects"])
-
-
-def _get_or_create_single_user(db: Session) -> User:
-    """V1 is single-user (Nobert). Rather than build auth now, use one
-    well-known local user row — swapping this for real auth later doesn't
-    touch the schema (CLAUDE.md: multi-user is explicitly out of scope for V1)."""
-    user = db.query(User).first()
-    if user is None:
-        user = User(email="nobert@local", display_name="Nobert")
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-    return user
 
 
 @router.get("", response_model=list[ProjectRead])
@@ -31,7 +18,7 @@ def list_projects(db: Session = Depends(get_db)) -> list[Project]:
 
 @router.post("", response_model=ProjectRead, status_code=201)
 def create_project(payload: ProjectCreate, db: Session = Depends(get_db)) -> Project:
-    owner = _get_or_create_single_user(db)
+    owner = get_or_create_single_user(db)
     project = Project(owner_id=owner.id, name=payload.name)
     db.add(project)
     db.commit()

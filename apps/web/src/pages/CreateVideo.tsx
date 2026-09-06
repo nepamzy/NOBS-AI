@@ -18,6 +18,14 @@ export function CreateVideo() {
 
   useEffect(() => {
     api.listProjects().then(setProjects).catch(() => setProjects([]));
+    api
+      .getSettings()
+      .then((s) => {
+        setDurationMinutes(s.default_duration_minutes);
+        setVoicePreset(s.default_voice_preset);
+        setStylePreset(s.default_style_preset);
+      })
+      .catch(() => {});
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
