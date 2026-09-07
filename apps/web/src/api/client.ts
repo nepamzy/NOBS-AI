@@ -139,6 +139,8 @@ export const api = {
     request<AuthResponse>("/auth/login", { method: "POST", body: JSON.stringify(payload) }),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   me: () => request<AdminUser>("/auth/me"),
+  changePassword: (payload: { current_password: string; new_password: string }) =>
+    request<AdminUser>("/auth/password", { method: "PUT", body: JSON.stringify(payload) }),
 
   generatePin: () => request<SignupPin>("/admin/pins", { method: "POST" }),
   listUsers: () => request<AdminUser[]>("/admin/users"),

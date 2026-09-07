@@ -14,7 +14,13 @@ from app.db import get_db
 from app.models.auth import AuthSession, SignupPin
 from app.models.enums import UserRole
 from app.models.user import User
-from app.schemas.auth import AuthResponse, LoginRequest, SignupRequest, UserRead
+from app.schemas.auth import (
+    AuthResponse,
+    ChangePasswordRequest,
+    LoginRequest,
+    SignupRequest,
+    UserRead,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -93,4 +99,30 @@ def logout(
 
 @router.get("/me", response_model=UserRead)
 def me(user: User = Depends(get_current_user)) -> UserRead:
+    return UserRead.model_validate(user)
+
+
+@router.put("/password", response_model=UserRead)
+def change_password(
+    payload: ChangePasswordRequest,
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> UserRead:
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+    user.password_hash = hash_password(payload.new_password)
+
+    # A password change is a "something may be compromised" moment — sign
+    # out every other session, keeping only the one making this request, so
+    # changing the password actually locks other access out immediately.
+    current_token = (authorization or "").removeprefix("Bearer ").strip()
+    db.query(AuthSession).filter(
+        AuthSession.user_id == user.id,
+        AuthSession.token_hash != hash_lookup_value(current_token),
+    ).delete()
+
+    db.commit()
+    db.refresh(user)
     return UserRead.model_validate(user)

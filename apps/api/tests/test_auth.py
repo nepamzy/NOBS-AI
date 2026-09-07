@@ -170,3 +170,94 @@ def test_logout_invalidates_the_session(client, db_session):
 def test_unauthenticated_request_rejected(client):
     response = client.get("/auth/me", headers={"Authorization": ""})
     assert response.status_code == 401
+
+
+def _signup(client, db_session, code, email, password):
+    _make_pin(db_session, client, code=code)
+    signup = client.post(
+        "/auth/signup",
+        json={"pin_code": code, "email": email, "password": password, "display_name": "T"},
+    ).json()
+    return signup["token"]
+
+
+def test_change_password_with_correct_current_password_succeeds(client, db_session):
+    token = _signup(client, db_session, "999001", "pw1@example.com", "original password")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.put(
+        "/auth/password",
+        json={"current_password": "original password", "new_password": "new password 123"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+
+    # old password no longer works, new one does
+    assert (
+        client.post(
+            "/auth/login", json={"email": "pw1@example.com", "password": "original password"}
+        ).status_code
+        == 401
+    )
+    assert (
+        client.post(
+            "/auth/login", json={"email": "pw1@example.com", "password": "new password 123"}
+        ).status_code
+        == 200
+    )
+
+
+def test_change_password_with_wrong_current_password_rejected(client, db_session):
+    token = _signup(client, db_session, "999002", "pw2@example.com", "original password")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.put(
+        "/auth/password",
+        json={"current_password": "wrong password", "new_password": "new password 123"},
+        headers=headers,
+    )
+    assert response.status_code == 401
+
+    # original password still works — nothing changed
+    assert (
+        client.post(
+            "/auth/login", json={"email": "pw2@example.com", "password": "original password"}
+        ).status_code
+        == 200
+    )
+
+
+def test_change_password_rejects_a_too_short_new_password(client, db_session):
+    token = _signup(client, db_session, "999003", "pw3@example.com", "original password")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.put(
+        "/auth/password",
+        json={"current_password": "original password", "new_password": "short"},
+        headers=headers,
+    )
+    assert response.status_code == 422
+
+
+def test_change_password_signs_out_other_sessions_but_keeps_the_current_one(client, db_session):
+    token = _signup(client, db_session, "999004", "pw4@example.com", "original password")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # a second session for the same account (e.g. logged in on another device)
+    other_login = client.post(
+        "/auth/login", json={"email": "pw4@example.com", "password": "original password"}
+    ).json()
+    other_headers = {"Authorization": f"Bearer {other_login['token']}"}
+    assert client.get("/auth/me", headers=other_headers).status_code == 200
+
+    response = client.put(
+        "/auth/password",
+        json={"current_password": "original password", "new_password": "new password 123"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+
+    # the session that made the change stays valid...
+    assert client.get("/auth/me", headers=headers).status_code == 200
+    # ...but the other one is signed out
+    assert client.get("/auth/me", headers=other_headers).status_code == 401

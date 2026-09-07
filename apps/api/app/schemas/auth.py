@@ -34,6 +34,18 @@ class LoginRequest(BaseModel):
     _validate = field_validator("email")(_validate_email)
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def _validate_new_password(cls, value: str) -> str:
+        if len(value) < 8:
+            raise ValueError("New password must be at least 8 characters")
+        return value
+
+
 class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
