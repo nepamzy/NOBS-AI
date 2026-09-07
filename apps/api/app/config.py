@@ -9,12 +9,23 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://nobs:nobs@localhost:5432/nobs_ai"
     redis_url: str = "redis://localhost:6379/0"
 
+    # "local" (default, free, but doesn't survive a redeploy on ephemeral
+    # disk) or "supabase" (uploads finished artifacts to Supabase Storage —
+    # see services/storage). Everything still generates to local disk first
+    # either way; this only controls where the FINISHED artifact ends up.
     storage_backend: str = "local"
     local_storage_root: str = "./storage/local"
     # Folder Nobert drops downloaded YouTube Audio Library tracks into —
     # there's no public API to pull them automatically (see chat history).
     # Empty/missing folder just means videos assemble without music.
     music_library_path: str = "./storage/music"
+
+    # --- Supabase Storage (storage_backend=supabase) ---
+    supabase_url: str = ""
+    supabase_service_role_key: str = ""
+    # Must already exist and be public (Storage -> New bucket -> Public
+    # bucket, in the Supabase dashboard) — this doesn't create it.
+    supabase_storage_bucket: str = "nobs-ai"
 
     cors_origins: str = "http://localhost:5173"
 

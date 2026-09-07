@@ -12,13 +12,14 @@ the video (stage_detail) and the stage does NOT advance — the pipeline
 parks itself rather than retrying a paid call on its own.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
 from services.ai.research.engine import ResearchEngine
 from services.ai.script.engine import ScriptEngine
 from services.common.errors import ApprovalRequiredError
+from services.storage.backend import LocalStorageBackend, StorageBackend
 from services.video.engine import SceneClipRequest, VideoEngine
 from services.voice.engine import VoiceEngine
 
@@ -31,6 +32,11 @@ class PipelineContext:
     video_engine: VideoEngine
     storage_root: str
     music_library_path: str = "./storage/music"
+    # Uploads the finished artifact at each stage boundary (final video,
+    # thumbnails, captions) so it survives past local disk — see
+    # services/storage. Defaults to a no-op (keeps the local path) so every
+    # existing test/call site that doesn't care about this keeps working.
+    storage_backend: StorageBackend = field(default_factory=LocalStorageBackend)
 
 
 class PipelineBlocked(RuntimeError):
@@ -377,6 +383,10 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
         except AssemblyError as exc:
             _block(video, db, "assembly", f"ffmpeg assembly failed: {exc}")
 
+        # Kept as a local path through CAPTIONS/THUMBNAIL — those stages read
+        # it back as their own input within the same pipeline run, so there's
+        # no redeploy risk yet. Only the artifacts left standing once the
+        # pipeline reaches COMPLETED get uploaded (see that stage below).
         video.final_video_path = final_path
         video.stage = PipelineStage.CAPTIONS
         video.stage_detail = ""
@@ -479,6 +489,33 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
                 )
         except AssemblyError as exc:
             _block(video, db, "thumbnail", f"ffmpeg thumbnail extraction failed: {exc}")
+
+        # Everything the pipeline still produces from here on is local-disk
+        # paths — the one point where each finished artifact gets uploaded
+        # (see services/storage) so it survives past this process, since
+        # nothing else touches these files after COMPLETED.
+        video.final_video_path = ctx.storage_backend.upload(
+            video.final_video_path, f"{video.id}/final.mp4"
+        )
+        captions_asset = (
+            db.query(Asset)
+            .filter(Asset.video_id == video.id, Asset.asset_type == AssetType.CAPTIONS)
+            .one_or_none()
+        )
+        if captions_asset is not None:
+            captions_asset.path = ctx.storage_backend.upload(
+                captions_asset.path, f"{video.id}/captions.srt"
+            )
+        for thumbnail in db.query(Thumbnail).filter(Thumbnail.video_id == video.id):
+            uploaded_url = ctx.storage_backend.upload(
+                thumbnail.image_path, f"{video.id}/thumbnail_{thumbnail.variant_label}.jpg"
+            )
+            thumbnail.image_path = uploaded_url
+            db.query(Asset).filter(
+                Asset.video_id == video.id,
+                Asset.asset_type == AssetType.THUMBNAIL,
+                Asset.label == f"Thumbnail {thumbnail.variant_label}",
+            ).update({"path": uploaded_url})
 
         video.stage = PipelineStage.COMPLETED
         video.stage_detail = ""

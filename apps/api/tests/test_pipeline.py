@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from app.models.asset import Asset
 from app.models.compliance import ComplianceReport
-from app.models.enums import JobStatus, PipelineStage
+from app.models.enums import AssetType, JobStatus, PipelineStage
 from app.models.project import Project
 from app.models.research import Research
 from app.models.script import Script
@@ -466,6 +466,58 @@ def test_thumbnail_stage_extracts_three_candidate_frames(db_session, monkeypatch
     thumbnails = db_session.query(Thumbnail).filter(Thumbnail.video_id == video.id).all()
     assert len(thumbnails) == 3
     assert {t.variant_label for t in thumbnails} == {"A", "B", "C"}
+
+
+class _FakeStorageBackend:
+    def __init__(self):
+        self.calls: list[tuple[str, str]] = []
+
+    def upload(self, local_path: str, key: str) -> str:
+        self.calls.append((local_path, key))
+        return f"https://fake.supabase.co/storage/v1/object/public/nobs-ai/{key}"
+
+
+def test_thumbnail_stage_uploads_final_video_captions_and_thumbnails(db_session, monkeypatch):
+    video, ctx, _fake_voice, _fake_video = _advance_to_captions(db_session, monkeypatch)
+    fake_storage = _FakeStorageBackend()
+    ctx.storage_backend = fake_storage
+
+    from services.rendering.ffmpeg import assembler
+
+    monkeypatch.setattr(assembler, "burn_in_captions", lambda *a, **k: None)
+    advance_one_stage(video, db_session, ctx, run_research=True)  # CAPTIONS -> THUMBNAIL
+    local_final_path = video.final_video_path  # captured before THUMBNAIL uploads it
+
+    monkeypatch.setattr(assembler, "extract_frame", lambda *a, **k: None)
+    advance_one_stage(video, db_session, ctx, run_research=True)  # THUMBNAIL -> COMPLETED
+
+    assert video.stage.value == "completed"
+    # final video, captions, and all three thumbnails were each uploaded once
+    assert len(fake_storage.calls) == 5
+    uploaded_local_paths = {c[0] for c in fake_storage.calls}
+    assert local_final_path in uploaded_local_paths
+
+    # the stored paths are now the uploaded URLs, not local disk paths
+    assert video.final_video_path == (
+        f"https://fake.supabase.co/storage/v1/object/public/nobs-ai/{video.id}/final.mp4"
+    )
+    captions_asset = (
+        db_session.query(Asset)
+        .filter(Asset.video_id == video.id, Asset.asset_type == AssetType.CAPTIONS)
+        .one()
+    )
+    assert captions_asset.path.startswith("https://fake.supabase.co/")
+
+    thumbnails = db_session.query(Thumbnail).filter(Thumbnail.video_id == video.id).all()
+    assert len(thumbnails) == 3
+    assert all(t.image_path.startswith("https://fake.supabase.co/") for t in thumbnails)
+    thumbnail_assets = (
+        db_session.query(Asset)
+        .filter(Asset.video_id == video.id, Asset.asset_type == AssetType.THUMBNAIL)
+        .all()
+    )
+    assert len(thumbnail_assets) == 3
+    assert all(a.path.startswith("https://fake.supabase.co/") for a in thumbnail_assets)
 
 
 def test_completed_stage_is_a_terminal_no_op(db_session, monkeypatch):

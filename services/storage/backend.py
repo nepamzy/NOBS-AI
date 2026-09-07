@@ -1,42 +1,31 @@
-"""Storage abstraction. Default is local filesystem (free). Switching to S3
-or another object store later is a paid-infra decision that needs a cost
-warning + approval per CLAUDE.md Part 1 before it's wired in here.
+"""Persists a finished artifact (final video, thumbnail, captions) somewhere
+that survives past the process that generated it. Render's local disk is
+ephemeral — wiped on every redeploy/restart — so anything the user needs to
+still be there afterward has to leave local disk, not just be written to it.
+
+Intermediate/working files (per-scene clips, per-scene voiceovers) are
+deliberately NOT uploaded — they're regenerable inputs, not the deliverable,
+and re-running that stage recreates them. Only the outputs a person actually
+looks at (the assembled video at each stage, thumbnails, the caption file)
+go through this.
 """
 
-import shutil
 from abc import ABC, abstractmethod
-from pathlib import Path
 
 
 class StorageBackend(ABC):
     @abstractmethod
-    def save(self, local_source_path: str, relative_dest_path: str) -> str:
-        """Store a local file, returning the path/key it's accessible at."""
-
-    @abstractmethod
-    def resolve(self, relative_path: str) -> str:
-        """Return an absolute, readable path/URL for a stored file."""
+    def upload(self, local_path: str, key: str) -> str:
+        """Uploads the file at local_path, returns a URL the frontend can
+        fetch it from directly (already absolute — no /storage/ prefixing
+        needed, unlike the local backend)."""
 
 
 class LocalStorageBackend(StorageBackend):
-    def __init__(self, root: str):
-        self._root = Path(root)
-        self._root.mkdir(parents=True, exist_ok=True)
+    """Default. Free, but doesn't survive a redeploy on ephemeral disk — see
+    module docstring. Returns the local path unchanged; app/storage.py's
+    to_url() is what turns that into a fetchable /storage/... URL."""
 
-    def save(self, local_source_path: str, relative_dest_path: str) -> str:
-        dest = self._root / relative_dest_path
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(local_source_path, dest)
-        return str(dest)
-
-    def resolve(self, relative_path: str) -> str:
-        return str(self._root / relative_path)
-
-
-def build_storage_backend(backend_name: str, local_root: str) -> StorageBackend:
-    if backend_name == "local":
-        return LocalStorageBackend(local_root)
-    raise NotImplementedError(
-        f"Storage backend '{backend_name}' is not implemented — only 'local' "
-        "is available until a paid storage option is chosen and approved."
-    )
+    def upload(self, local_path: str, key: str) -> str:
+        del key  # unused — local backend just keeps the file where it is
+        return local_path
