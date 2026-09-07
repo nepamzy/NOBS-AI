@@ -1,5 +1,6 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { Logo } from "./Logo";
 
 const links = [
   { to: "/", label: "Dashboard", end: true },
@@ -20,7 +21,7 @@ export function Sidebar() {
   return (
     <nav className="flex w-56 shrink-0 flex-col gap-1 border-r border-white/10 bg-black/20 p-4">
       <div className="mb-6 flex items-center gap-2 px-2">
-        <span className="h-2 w-2 rounded-full bg-accent-500" />
+        <Logo size={22} />
         <span className="font-heading text-lg font-semibold tracking-tight text-white">
           NOBS AI
         </span>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { Logo } from "../components/Logo";
 
 export function Login() {
   const { login } = useAuth();
@@ -31,7 +32,7 @@ export function Login() {
     <div className="flex min-h-screen items-center justify-center p-8">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-accent-500" />
+          <Logo size={28} />
           <span className="font-heading text-lg font-semibold tracking-tight text-white">
             NOBS AI
           </span>
