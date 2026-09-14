@@ -101,8 +101,9 @@ Always know the current phase. Before starting a new major phase, run through: C
 
 Pipeline: `Topic → Research → Script (scene-structured) → Storyboard → Approval → Video Engine (Wan) + Voice Engine (Chatterbox) → FFmpeg Assembly → Captions → Thumbnail → Final MP4`
 
+**Multi-user accounts are IN scope** (built — see Part 6): Nobert (ADMIN) invites guest USER accounts via single-use signup PINs; each user's projects/videos are fully private; ADMIN generates unlimited videos free, guests spend `token_balance` (admin grants tokens manually — no payment processor connected, per Nobert's explicit instruction that only the admin side ever pays real money).
+
 **Explicitly OUT of scope for V1** (don't build even if it seems like a logical next step):
-- Multi-user accounts
 - Business automation agent
 - General day-to-day assistant chat product
 - Automatic YouTube publishing (V2)
@@ -322,6 +323,10 @@ Stage: 7 (Rendering engine) code-complete at the orchestration level; stages 3, 
 **What's still gated, not started:** stages 5 and 6 (Voice engine, Video engine) have their abstractions and adapters (`services/voice/chatterbox`, `services/video/wan`) but no real provider is connected — `ChatterboxEngine`/`WanEngine` raise `ApprovalRequiredError` on first real use, exactly as designed, until Nobert approves a specific spend and provides `CHATTERBOX_API_URL` or `RUNPOD_API_KEY`/`WAN_ENDPOINT_ID` (or an ElevenLabs key, if that's the voice path chosen — see chat history on cost). No paid resources have been provisioned. No external accounts connected yet. Stage 9 (testing with real generated video) can't start until one of those is wired.
 
 **Next action:** Nobert decides voice provider (Chatterbox self-hosted/free vs. ElevenLabs paid) and video provider (Wan/Runpod), approves the specific cost, and provides the corresponding `.env` value — that's the one remaining blocker before a real end-to-end video can be produced.
+
+**Multi-user (also built):** ADMIN (Nobert, exactly one, bootstrapped from `ADMIN_EMAIL`/`ADMIN_PASSWORD`) invites guest USER accounts via single-use, 5-minute signup PINs (`POST /admin/pins`). Every USER's projects/videos are fully private (owner-scoped queries, 404 not 403 on someone else's data). `User.token_balance`: ADMIN is exempt from the check entirely; every guest spends 1 token per video created, checked+deducted atomically; admin manually tops up balances via `POST /admin/users/{id}/grant-tokens` — this is a deliberate placeholder for real payment, which is explicitly NOT connected (only Nobert's own paid infra spend is real money; guest usage is metered in tokens Nobert grants by hand, not billed to them). Admin panel (`AdminDashboard.tsx`) covers PIN generation, user list, suspend/unsuspend, delete, grant tokens. **Known gap:** `target_duration_seconds` on video creation has no cap and token cost doesn't scale with it — a 3-minute and a 30-minute video both cost 1 token to the user but very different real GPU/LLM/voice spend to Nobert. Needs a cap or duration-aware token cost before opening signups beyond a small trusted batch.
+
+**Hosting status:** Supabase (Postgres + Storage, free tier) and Vercel (frontend, free tier) are live. Render backend (Web Service + Redis) created; Background Worker needs manual creation via Render's dashboard (no MCP tool for that service type); `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `REDIS_URL` need to be added directly in Render's dashboard by Nobert (never through chat, per Credentials rule). Total confirmed run cost: **$17/month** (Web Service free + Worker $7 + Redis $10; Supabase/Vercel $0 on free tier) — this does not change with user *count*, only with videos actually generated (LLM/voice/GPU, all still unconnected/$0).
 
 ---
 
