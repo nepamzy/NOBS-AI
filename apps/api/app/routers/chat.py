@@ -1,3 +1,4 @@
+import base64
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,16 +7,53 @@ from sqlalchemy.orm import Session
 from app.auth.deps import get_current_user
 from app.config import settings
 from app.db import get_db
+from app.models.enums import UserRole
 from app.models.project import Project
 from app.models.user import User
-from app.schemas.chat import ChatMessage, ChatRequest, ChatResponse
+from app.schemas.chat import ChatAttachment, ChatMessage, ChatRequest, ChatResponse
 from app.schemas.project import ProjectRead
 from app.schemas.script import SceneRegenerateRequest, ScriptRead
 from app.schemas.video import VideoCreate, VideoRead
-from services.ai.assistant.engine import run_chat_turn
+from services.ai.assistant.engine import (
+    ADMIN_SYSTEM_PROMPT_ADDENDUM,
+    NOBS_SYSTEM_PROMPT,
+    NOBS_TOOLS,
+    WEB_SEARCH_TOOL,
+    run_chat_turn,
+)
 from services.common.errors import EngineNotConfiguredError
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+_MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024  # 15MB raw file
+_ALLOWED_ATTACHMENT_TYPES = {
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "application/pdf",
+}
+
+
+def _attachment_content_block(attachment: ChatAttachment) -> dict:
+    if attachment.media_type not in _ALLOWED_ATTACHMENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported attachment type {attachment.media_type!r} — "
+            "images (PNG/JPEG/GIF/WebP) and PDFs only. Video isn't supported yet.",
+        )
+    try:
+        raw_size = len(base64.b64decode(attachment.data, validate=True))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Attachment data isn't valid base64") from exc
+    if raw_size > _MAX_ATTACHMENT_BYTES:
+        raise HTTPException(status_code=400, detail="Attachment too large — 15MB max")
+
+    block_type = "image" if attachment.media_type.startswith("image/") else "document"
+    return {
+        "type": block_type,
+        "source": {"type": "base64", "media_type": attachment.media_type, "data": attachment.data},
+    }
 
 
 def _build_tool_executor(db: Session, user: User):
@@ -97,7 +135,25 @@ def send_message(
     payload: ChatRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> ChatResponse:
     conversation = [{"role": m.role, "content": m.content} for m in payload.history]
-    conversation.append({"role": "user", "content": payload.message})
+
+    if payload.attachment is not None:
+        user_content = [
+            _attachment_content_block(payload.attachment),
+            {"type": "text", "text": payload.message},
+        ]
+    else:
+        user_content = payload.message
+    conversation.append({"role": "user", "content": user_content})
+
+    # Admin-only, per Nobert's explicit instruction: broader research/coding/
+    # security help plus real web search. Every other user keeps the narrow
+    # video-creation-only assistant (CLAUDE.md Part 2).
+    if user.role == UserRole.ADMIN:
+        system_prompt = NOBS_SYSTEM_PROMPT + ADMIN_SYSTEM_PROMPT_ADDENDUM
+        tools = [*NOBS_TOOLS, WEB_SEARCH_TOOL]
+    else:
+        system_prompt = NOBS_SYSTEM_PROMPT
+        tools = NOBS_TOOLS
 
     try:
         result = run_chat_turn(
@@ -106,6 +162,8 @@ def send_message(
             settings.llm_model,
             conversation,
             _build_tool_executor(db, user),
+            system_prompt=system_prompt,
+            tools=tools,
         )
     except EngineNotConfiguredError as exc:
         raise HTTPException(status_code=402, detail=str(exc)) from exc

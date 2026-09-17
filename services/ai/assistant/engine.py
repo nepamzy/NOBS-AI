@@ -1,16 +1,25 @@
-"""Video-creation assistant: a chat interface that can actually act on
-NOBS AI via tool use. Deliberately narrow — CLAUDE.md Part 2 marks a
-general-purpose assistant chat as out of scope for V1; this one only
-directs actions the existing product already supports (create a video,
-check status, regenerate a scene, approve a storyboard), not open-ended
-conversation.
+"""NOBS AI assistant chat.
 
-This file never touches the database. Every tool is a plain Python
-callable the caller (the /chat router) provides, already bound to the
-signed-in user — wired to the exact same functions the regular REST
-endpoints call, so chat enforces the same ownership/token-balance checks
-as everything else. Nothing here grants a capability a normal
-authenticated request couldn't already do.
+Two modes, chosen by the caller (the /chat router) based on who's asking:
+
+- **Guest mode** (every non-admin user): narrow on purpose — CLAUDE.md
+  Part 2 marks a general-purpose assistant chat as out of scope for V1.
+  Guests only get NOBS_TOOLS (direct their own videos) and
+  NOBS_SYSTEM_PROMPT, not web search or open-ended conversation.
+- **Admin mode** (Nobert only, per his explicit instruction): broader —
+  general research (with real web search, not just training-data recall),
+  coding help, and security guidance, in addition to everything guest mode
+  can do. Still not a payment-connected or multi-user feature; it's an
+  admin-only capability layer on the same chat.
+
+This file never touches the database. Every NOBS_TOOLS entry is a plain
+Python callable the router provides, already bound to the signed-in user —
+wired to the exact same functions the regular REST endpoints call, so
+chat enforces the same ownership/token-balance checks as everything else.
+Nothing here grants a capability a normal authenticated request couldn't
+already do; web search is the one genuinely new (and separately billed —
+$0.01/search plus normal input tokens for results, see CLAUDE.md chat
+history) capability admin mode adds.
 """
 
 import json
@@ -22,7 +31,7 @@ from services.common.errors import ApprovalRequiredError, EngineNotConfiguredErr
 _MAX_TOOL_ROUNDS = 6  # safety cap against a runaway tool-call loop
 _MAX_OUTPUT_TOKENS = 2048
 
-SYSTEM_PROMPT = (
+NOBS_SYSTEM_PROMPT = (
     "You are the NOBS AI assistant. You help the signed-in user create and "
     "manage their YouTube videos through this conversation. You can list "
     "their projects/videos, check a video's pipeline status, create a new "
@@ -34,7 +43,23 @@ SYSTEM_PROMPT = (
     "configured), explain that plainly to the user rather than retrying."
 )
 
-TOOL_DEFINITIONS = [
+ADMIN_SYSTEM_PROMPT_ADDENDUM = (
+    "\n\nYou are talking to Nobert, the product's admin — beyond directing "
+    "NOBS AI itself, he also wants you as a general assistant: deep "
+    "research on any topic (use the web_search tool for anything "
+    "time-sensitive or where accuracy matters — don't rely on memory "
+    "alone for facts, prices, or current events), coding help and "
+    "teaching across any language or framework, and practical "
+    "cybersecurity guidance (recognizing phishing/scams, account "
+    "hardening, safe practices) — defensive advice only, never help "
+    "attacking or compromising a system that isn't his own. If he shares "
+    "an image or PDF, analyze it directly and answer his question about "
+    "it. You cannot yet accept video files — only images and PDFs."
+)
+
+WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search", "max_uses": 5}
+
+NOBS_TOOLS = [
     {
         "name": "list_projects",
         "description": "List the current user's projects.",
@@ -130,7 +155,11 @@ def run_chat_turn(
     llm_model: str,
     conversation: list[dict],
     tool_executor: Callable[[str, dict], object],
+    system_prompt: str = NOBS_SYSTEM_PROMPT,
+    tools: list[dict] | None = None,
 ) -> ChatTurnResult:
+    if tools is None:
+        tools = NOBS_TOOLS
     if not llm_provider or not llm_api_key:
         raise EngineNotConfiguredError(
             "No LLM_PROVIDER/LLM_API_KEY configured — the assistant needs "
@@ -151,8 +180,8 @@ def run_chat_turn(
         response = client.messages.create(
             model=llm_model,
             max_tokens=_MAX_OUTPUT_TOKENS,
-            system=SYSTEM_PROMPT,
-            tools=TOOL_DEFINITIONS,
+            system=system_prompt,
+            tools=tools,
             messages=messages,
         )
         content_blocks = [block.model_dump() for block in response.content]

@@ -2,6 +2,7 @@ import type {
   AdminUser,
   Asset,
   AuthResponse,
+  ChatAttachment,
   ChatMessage,
   ChatResponse,
   CostCategory,
@@ -158,9 +159,9 @@ export const api = {
 
   listPackages: () => request<TokenPackage[]>("/payments/packages"),
 
-  sendChatMessage: (message: string, history: ChatMessage[]) =>
+  sendChatMessage: (message: string, history: ChatMessage[], attachment?: ChatAttachment) =>
     request<ChatResponse>("/chat/messages", {
       method: "POST",
-      body: JSON.stringify({ message, history }),
+      body: JSON.stringify({ message, history, attachment: attachment ?? null }),
     }),
 };

@@ -169,6 +169,12 @@ export interface ChatMessage {
   content: string | Record<string, unknown>[];
 }
 
+export interface ChatAttachment {
+  media_type: string;
+  data: string; // base64, no data: URL prefix
+  filename?: string;
+}
+
 export interface ChatResponse {
   reply: string;
   history: ChatMessage[];

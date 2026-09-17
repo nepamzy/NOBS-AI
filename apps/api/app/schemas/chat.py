@@ -6,9 +6,16 @@ class ChatMessage(BaseModel):
     content: object  # str for plain turns, or a list of content blocks (tool use/result)
 
 
+class ChatAttachment(BaseModel):
+    media_type: str  # e.g. "image/png", "image/jpeg", "application/pdf"
+    data: str  # base64-encoded file bytes, no data: URL prefix
+    filename: str = ""
+
+
 class ChatRequest(BaseModel):
     message: str
     history: list[ChatMessage] = []
+    attachment: ChatAttachment | None = None
 
 
 class ChatResponse(BaseModel):
