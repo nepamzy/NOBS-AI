@@ -7,4 +7,4 @@ from services.ai.script.engine import ScriptEngine
 
 
 def get_script_engine() -> ScriptEngine:
-    return ScriptEngine(settings.llm_provider, settings.llm_api_key)
+    return ScriptEngine(settings.llm_provider, settings.llm_api_key, settings.llm_model)

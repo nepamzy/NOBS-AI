@@ -29,8 +29,14 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://localhost:5173"
 
+    # Only "anthropic" is actually implemented (services/ai/*/engine.py) —
+    # any other value falls through to the same ApprovalRequiredError as
+    # leaving it unset. Model defaults to claude-opus-5; override with a
+    # cheaper model (e.g. claude-sonnet-5, claude-haiku-4-5) to cut cost —
+    # see chat history for the per-model price comparison.
     llm_provider: str = ""
     llm_api_key: str = ""
+    llm_model: str = "claude-opus-5"
 
     runpod_api_key: str = ""
     wan_endpoint_id: str = ""

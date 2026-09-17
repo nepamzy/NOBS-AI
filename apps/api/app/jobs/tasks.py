@@ -15,7 +15,9 @@ from services.voice.factory import get_voice_engine
 
 def _build_context() -> PipelineContext:
     return PipelineContext(
-        research_engine=ResearchEngine(settings.llm_provider, settings.llm_api_key),
+        research_engine=ResearchEngine(
+            settings.llm_provider, settings.llm_api_key, settings.llm_model
+        ),
         script_engine=get_script_engine(),
         voice_engine=get_voice_engine(
             settings.voice_provider,
