@@ -10,14 +10,19 @@ from services.ai.orchestration.pipeline import PipelineBlocked, PipelineContext,
 from services.ai.research.engine import ResearchEngine
 from services.storage.factory import get_storage_backend
 from services.video.wan.adapter import WanEngine
-from services.voice.chatterbox.adapter import ChatterboxEngine
+from services.voice.factory import get_voice_engine
 
 
 def _build_context() -> PipelineContext:
     return PipelineContext(
         research_engine=ResearchEngine(settings.llm_provider, settings.llm_api_key),
         script_engine=get_script_engine(),
-        voice_engine=ChatterboxEngine(settings.chatterbox_api_url),
+        voice_engine=get_voice_engine(
+            settings.voice_provider,
+            settings.chatterbox_api_url,
+            settings.elevenlabs_api_key,
+            settings.elevenlabs_voice_map,
+        ),
         video_engine=WanEngine(settings.runpod_api_key, settings.wan_endpoint_id),
         storage_root=settings.local_storage_root,
         music_library_path=settings.music_library_path,

@@ -35,7 +35,17 @@ class Settings(BaseSettings):
     runpod_api_key: str = ""
     wan_endpoint_id: str = ""
 
+    # "chatterbox" (default — self-hosted, free per-call but needs an
+    # already-running server, so it bills for uptime not usage) or
+    # "elevenlabs" (managed, usage-based, no idle cost — see
+    # services/voice/elevenlabs).
+    voice_provider: str = "chatterbox"
     chatterbox_api_url: str = ""
+    elevenlabs_api_key: str = ""
+    # JSON object mapping our voice_preset ids (services/voice/catalog.py)
+    # to real ElevenLabs voice_ids, e.g. {"warm-narrator": "<voice_id>"}.
+    # Only used when voice_provider=elevenlabs.
+    elevenlabs_voice_map: str = "{}"
 
     # --- Auth ---
     # Peppers PIN-code and session-token hashes so a stolen DB dump alone
