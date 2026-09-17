@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { ChatMessage } from "../api/types";
+import { MicButton } from "../components/MicButton";
 
 // `content` is either a plain string (what the user typed) or a list of
 // Anthropic content blocks (assistant replies, or the tool_result messages
@@ -92,10 +93,11 @@ export function Assistant() {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask the assistant…"
+          placeholder="Ask the assistant… or tap 🎙 to dictate"
           disabled={sending}
           className="flex-1 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-white/40 focus:border-accent-500 focus:outline-none"
         />
+        <MicButton value={input} onChange={setInput} />
         <button
           type="submit"
           disabled={sending || !input.trim()}

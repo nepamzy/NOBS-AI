@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import type { Project, StylePreset, VoicePreset } from "../api/types";
 import { DurationPicker } from "../components/DurationPicker";
+import { MicButton } from "../components/MicButton";
 import { StylePicker } from "../components/StylePicker";
 import { VoicePicker } from "../components/VoicePicker";
 
@@ -107,14 +108,17 @@ export function CreateVideo() {
           <>
             <label className="flex flex-col gap-1.5">
               <span className="text-sm text-white/70">Topic</span>
-              <textarea
-                autoFocus
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                placeholder="e.g. 5 mistakes new developers make"
-                rows={4}
-                className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white placeholder:text-white/30"
-              />
+              <div className="flex items-start gap-2">
+                <textarea
+                  autoFocus
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  placeholder="Any topic, any niche — e.g. 5 mistakes new developers make, or tap 🎙 to dictate"
+                  rows={4}
+                  className="flex-1 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white placeholder:text-white/30"
+                />
+                <MicButton value={topic} onChange={setTopic} />
+              </div>
             </label>
 
             <label className="flex items-center gap-2 text-sm text-white/70">
