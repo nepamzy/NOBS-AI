@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { api, ApiError, resolveStorageUrl } from "../api/client";
 import type { ChatAttachment, ChatMessage, GeneratedFile } from "../api/types";
 import { MicButton } from "../components/MicButton";
+import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis";
 
 // `content` is either a plain string (what the user typed) or a list of
 // Anthropic content blocks (assistant replies, tool_result messages this
@@ -46,7 +47,9 @@ export function Assistant() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [latestFiles, setLatestFiles] = useState<GeneratedFile[]>([]);
+  const [voiceMode, setVoiceMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { isSupported: ttsSupported, isSpeaking, speak, stop: stopSpeaking } = useSpeechSynthesis();
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -64,13 +67,10 @@ export function Assistant() {
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const message = input.trim();
-    if ((!message && !attachment) || sending) return;
+  async function sendMessage(message: string, sentAttachment: ChatAttachment | null) {
+    if ((!message && !sentAttachment) || sending) return;
 
     setInput("");
-    const sentAttachment = attachment;
     setAttachment(null);
     setSending(true);
     setError(null);
@@ -88,6 +88,11 @@ export function Assistant() {
       const response = await api.sendChatMessage(message, history, sentAttachment ?? undefined);
       setHistory(response.history);
       setLatestFiles(response.files);
+      if (voiceMode && ttsSupported) {
+        const lastReply = [...response.history].reverse().find((m) => m.role === "assistant");
+        const replyText = lastReply ? visibleText(lastReply.content) : null;
+        if (replyText) speak(replyText);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
     } finally {
@@ -95,15 +100,44 @@ export function Assistant() {
     }
   }
 
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    sendMessage(input.trim(), attachment);
+  }
+
   return (
     <div className="flex h-[calc(100vh-4rem)] max-w-2xl flex-col">
-      <div>
-        <h1 className="font-heading text-2xl font-semibold text-white">Assistant</h1>
-        <p className="mt-2 text-white/60">
-          Ask it to create a video, check on one, tweak a scene, or approve a storyboard. Signed in
-          as admin, it can also research anything, help with code, and look at an image or PDF you
-          attach.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-heading text-2xl font-semibold text-white">Assistant</h1>
+          <p className="mt-2 text-white/60">
+            Ask it to create a video, check on one, tweak a scene, or approve a storyboard. Signed
+            in as admin, it can also research anything, help with code, and look at an image or
+            PDF you attach.
+          </p>
+        </div>
+        {ttsSupported && (
+          <button
+            type="button"
+            onClick={() => {
+              if (voiceMode) stopSpeaking();
+              setVoiceMode((v) => !v);
+            }}
+            title={
+              voiceMode
+                ? "Voice mode on — replies are read aloud, dictation auto-sends"
+                : "Turn on voice mode: talk and it answers out loud, like a call"
+            }
+            aria-pressed={voiceMode}
+            className={`shrink-0 rounded-md border px-3 py-2 text-sm transition-colors ${
+              voiceMode
+                ? "border-accent-500/40 bg-accent-500/20 text-accent-300"
+                : "border-white/10 bg-white/5 text-white/60 hover:text-white"
+            }`}
+          >
+            {isSpeaking ? "🔊 Speaking…" : voiceMode ? "🔊 Voice mode" : "🔈 Voice mode"}
+          </button>
+        )}
       </div>
 
       <div className="mt-6 flex-1 space-y-4 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-4">
@@ -192,11 +226,20 @@ export function Assistant() {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask the assistant… or tap 🎙 to dictate"
+          placeholder={
+            voiceMode ? "Voice mode on — tap 🎙, talk, tap again to send" : "Ask the assistant… or tap 🎙 to dictate"
+          }
           disabled={sending}
           className="flex-1 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-white/40 focus:border-accent-500 focus:outline-none"
         />
-        <MicButton value={input} onChange={setInput} />
+        <MicButton
+          value={input}
+          onChange={setInput}
+          onStart={() => voiceMode && stopSpeaking()}
+          onStop={(finalValue) => {
+            if (voiceMode && finalValue.trim()) sendMessage(finalValue.trim(), null);
+          }}
+        />
         <button
           type="submit"
           disabled={sending || (!input.trim() && !attachment)}
