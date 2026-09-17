@@ -8,9 +8,11 @@ from sqlalchemy.orm import Session
 from app.auth.deps import get_current_user
 from app.config import settings
 from app.db import get_db
+from app.models.assistant_memory import AssistantMemory
 from app.models.enums import UserRole
 from app.models.project import Project
 from app.models.user import User
+from app.rate_limit import rate_limit
 from app.schemas.chat import (
     ChatAttachment,
     ChatMessage,
@@ -25,6 +27,8 @@ from app.storage import to_url
 from services.ai.assistant.engine import (
     ADMIN_SYSTEM_PROMPT_ADDENDUM,
     CODE_EXECUTION_TOOL,
+    CONNECTOR_TOOLS,
+    MEMORY_TOOL,
     NOBS_SYSTEM_PROMPT,
     NOBS_TOOLS,
     WEB_SEARCH_TOOL,
@@ -32,6 +36,9 @@ from services.ai.assistant.engine import (
     run_chat_turn,
 )
 from services.common.errors import EngineNotConfiguredError
+from services.connectors.github.adapter import GitHubConnector
+from services.connectors.gmail.adapter import GmailConnector
+from services.connectors.vercel.adapter import VercelConnector
 from services.storage.factory import get_storage_backend
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -158,12 +165,91 @@ def _build_tool_executor(db: Session, user: User):
             video = _approve_storyboard(uuid.UUID(tool_input["video_id"]), db=db, user=user)
             return VideoRead.model_validate(video).model_dump(mode="json")
 
+        if name.startswith("github_"):
+            github = GitHubConnector(settings.github_token, settings.github_default_repo)
+            if name == "github_read_file":
+                ref = tool_input.get("ref", "main")
+                return {"content": github.read_file(tool_input["path"], ref)}
+            if name == "github_create_branch":
+                from_branch = tool_input.get("from_branch", "main")
+                github.create_branch(tool_input["branch_name"], from_branch)
+                return {"created": tool_input["branch_name"]}
+            if name == "github_write_file":
+                url = github.write_file(
+                    tool_input["path"],
+                    tool_input["content"],
+                    tool_input["message"],
+                    tool_input["branch"],
+                )
+                return {"commit_url": url}
+            if name == "github_create_pull_request":
+                url = github.create_pull_request(
+                    tool_input["branch"],
+                    tool_input["title"],
+                    tool_input["body"],
+                    tool_input.get("base", "main"),
+                )
+                return {"pull_request_url": url}
+
+        if name.startswith("vercel_"):
+            vercel = VercelConnector(
+                settings.vercel_api_token, settings.vercel_project_id, settings.vercel_team_id
+            )
+            if name == "vercel_list_deployments":
+                return vercel.list_deployments(tool_input.get("limit", 10))
+            if name == "vercel_get_deployment":
+                return vercel.get_deployment(tool_input["deployment_id"])
+            if name == "vercel_list_env_vars":
+                return vercel.list_env_vars()
+            if name == "vercel_set_env_var":
+                return vercel.set_env_var(
+                    tool_input["key"], tool_input["value"], tool_input.get("target")
+                )
+
+        if name == "gmail_create_draft":
+            gmail = GmailConnector(
+                settings.google_client_id,
+                settings.google_client_secret,
+                settings.google_refresh_token,
+            )
+            draft_id = gmail.create_draft(
+                tool_input["to"], tool_input["subject"], tool_input["body"]
+            )
+            return {"draft_id": draft_id, "note": "Saved to Drafts — not sent"}
+
+        if name == "remember":
+            _append_memory(db, user.id, tool_input["fact"])
+            return {"saved": True}
+
         return {"error": f"Unknown tool {name!r}"}
 
     return execute
 
 
-@router.post("/messages", response_model=ChatResponse)
+_MAX_MEMORY_CHARS = 8000  # keeps the notes from silently growing unbounded in every prompt
+
+
+def _get_memory(db: Session, user_id: uuid.UUID) -> str:
+    memory = db.query(AssistantMemory).filter(AssistantMemory.user_id == user_id).one_or_none()
+    return memory.content if memory else ""
+
+
+def _append_memory(db: Session, user_id: uuid.UUID, fact: str) -> None:
+    memory = db.query(AssistantMemory).filter(AssistantMemory.user_id == user_id).one_or_none()
+    if memory is None:
+        memory = AssistantMemory(user_id=user_id, content="")
+        db.add(memory)
+    updated = f"{memory.content}\n- {fact}".strip()
+    # Trim from the oldest end (start of the string) so recent facts survive.
+    memory.content = updated[-_MAX_MEMORY_CHARS:]
+    db.commit()
+
+
+@router.post(
+    "/messages",
+    response_model=ChatResponse,
+    dependencies=[Depends(rate_limit("chat", max_requests=20, window_seconds=60))],
+)
 def send_message(
     payload: ChatRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> ChatResponse:
@@ -183,7 +269,10 @@ def send_message(
     # video-creation-only assistant (CLAUDE.md Part 2).
     if user.role == UserRole.ADMIN:
         system_prompt = NOBS_SYSTEM_PROMPT + ADMIN_SYSTEM_PROMPT_ADDENDUM
-        tools = [*NOBS_TOOLS, WEB_SEARCH_TOOL, CODE_EXECUTION_TOOL]
+        memory = _get_memory(db, user.id)
+        if memory:
+            system_prompt += f"\n\nWhat you already know about Nobert:\n{memory}"
+        tools = [*NOBS_TOOLS, WEB_SEARCH_TOOL, CODE_EXECUTION_TOOL, *CONNECTOR_TOOLS, MEMORY_TOOL]
     else:
         system_prompt = NOBS_SYSTEM_PROMPT
         tools = NOBS_TOOLS

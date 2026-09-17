@@ -14,6 +14,7 @@ from app.db import get_db
 from app.models.auth import AuthSession, SignupPin
 from app.models.enums import UserRole
 from app.models.user import User
+from app.rate_limit import rate_limit
 from app.schemas.auth import (
     AuthResponse,
     ChangePasswordRequest,
@@ -40,7 +41,12 @@ def _create_session(db: Session, user: User) -> str:
     return token
 
 
-@router.post("/signup", response_model=AuthResponse, status_code=201)
+@router.post(
+    "/signup",
+    response_model=AuthResponse,
+    status_code=201,
+    dependencies=[Depends(rate_limit("signup", max_requests=10, window_seconds=300))],
+)
 def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
     pin = (
         db.query(SignupPin)
@@ -74,7 +80,11 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthRespons
     return AuthResponse(token=token, user=UserRead.model_validate(user))
 
 
-@router.post("/login", response_model=AuthResponse)
+@router.post(
+    "/login",
+    response_model=AuthResponse,
+    dependencies=[Depends(rate_limit("login", max_requests=10, window_seconds=300))],
+)
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> AuthResponse:
     user = db.query(User).filter(User.email == payload.email).one_or_none()
     if user is None or not verify_password(payload.password, user.password_hash):

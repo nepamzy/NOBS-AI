@@ -36,7 +36,9 @@ class Settings(BaseSettings):
     # see chat history for the per-model price comparison.
     llm_provider: str = ""
     llm_api_key: str = ""
-    llm_model: str = "claude-opus-5"
+    # Sonnet, not Opus — Nobert's explicit choice to cut per-message cost;
+    # still capable enough for the assistant's coding/research/chat use.
+    llm_model: str = "claude-sonnet-5"
 
     runpod_api_key: str = ""
     wan_endpoint_id: str = ""
@@ -52,6 +54,28 @@ class Settings(BaseSettings):
     # to real ElevenLabs voice_ids, e.g. {"warm-narrator": "<voice_id>"}.
     # Only used when voice_provider=elevenlabs.
     elevenlabs_voice_map: str = "{}"
+
+    # --- Connectors (admin assistant tools — see services/connectors) ---
+    # GitHub: a fine-grained PAT scoped to ONLY this one repo, with ONLY
+    # Contents (read/write) + Pull requests (read/write) permissions — no
+    # Administration, no access to any other repo. Writes always land on a
+    # new branch + PR, never pushed straight to the default branch.
+    github_token: str = ""
+    github_default_repo: str = ""  # "owner/repo"
+
+    # Vercel: an API token scoped to ONLY this one project if your Vercel
+    # plan supports scoped tokens. Read-only on deployments; can add/update
+    # env vars, never trigger a deploy or touch domains/settings.
+    vercel_api_token: str = ""
+    vercel_project_id: str = ""
+    vercel_team_id: str = ""  # only needed if the project is under a team
+
+    # Gmail: OAuth only (no API-key auth exists for Gmail) — a one-time
+    # Google Cloud Console setup produces these three values. Drafts only,
+    # never sends — see services/connectors/gmail/adapter.py.
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_refresh_token: str = ""
 
     # --- Auth ---
     # Peppers PIN-code and session-token hashes so a stolen DB dump alone

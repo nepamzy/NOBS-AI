@@ -59,9 +59,20 @@ ADMIN_SYSTEM_PROMPT_ADDENDUM = (
     "never help attacking or compromising a system that isn't his own. If "
     "he shares an image or PDF, analyze it directly and answer his "
     "question about it. You cannot yet accept video files — only images "
-    "and PDFs. You do not have direct access to his other accounts "
-    "(GitHub, Gmail, Vercel, etc.) — say so plainly if asked to act on "
-    "one, rather than pretending to."
+    "and PDFs.\n\n"
+    "You DO have real, live access to three of his accounts, each scoped "
+    "to exactly one thing and each deliberately missing its most "
+    "dangerous capability:\n"
+    "- GitHub: read files and write them, but ONLY on a new branch you "
+    "create — you can never touch the default branch directly. Always "
+    "finish a set of changes with github_create_pull_request so Nobert "
+    "reviews and merges himself. You cannot merge, delete, or force-push.\n"
+    "- Vercel: read deployments and env var names, and add/update env "
+    "vars. You cannot trigger a deploy, delete anything, or touch domains.\n"
+    "- Gmail: create drafts only, in his Drafts folder. You can NEVER "
+    "send an email — say so plainly if asked to, rather than pretending.\n"
+    "If any of these three tools comes back with a 'not configured' "
+    "error, tell him plainly what's missing rather than retrying."
 )
 
 WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search", "max_uses": 5}
@@ -149,6 +160,151 @@ NOBS_TOOLS = [
         },
     },
 ]
+
+# Admin-only. Each connector is hardcoded to exactly one repo/project/
+# account server-side (see services/connectors/*/adapter.py) — none of
+# these input schemas accept a repo/project/account to target, precisely
+# so a bad or injected tool call can't redirect one at something Nobert
+# didn't approve.
+CONNECTOR_TOOLS = [
+    {
+        "name": "github_read_file",
+        "description": "Read a file's contents from the configured GitHub repo.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "ref": {"type": "string", "description": "Branch/tag/sha, defaults to main"},
+            },
+            "required": ["path"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "github_create_branch",
+        "description": "Create a new branch to make changes on. Always do this before writing.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "branch_name": {"type": "string"},
+                "from_branch": {"type": "string", "description": "Defaults to main"},
+            },
+            "required": ["branch_name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "github_write_file",
+        "description": (
+            "Create or update a file. Must target a branch created with "
+            "github_create_branch, never the default branch."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "content": {"type": "string"},
+                "message": {"type": "string", "description": "Commit message"},
+                "branch": {"type": "string"},
+            },
+            "required": ["path", "content", "message", "branch"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "github_create_pull_request",
+        "description": (
+            "Open a PR from your branch so Nobert can review and merge. "
+            "This is the only way changes reach the default branch."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "branch": {"type": "string"},
+                "title": {"type": "string"},
+                "body": {"type": "string"},
+                "base": {"type": "string", "description": "Defaults to main"},
+            },
+            "required": ["branch", "title", "body"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "vercel_list_deployments",
+        "description": "List recent deployments for the configured Vercel project.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"limit": {"type": "integer"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "vercel_get_deployment",
+        "description": "Get details/status for one deployment.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"deployment_id": {"type": "string"}},
+            "required": ["deployment_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "vercel_list_env_vars",
+        "description": "List environment variable names (not values) on the configured project.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "vercel_set_env_var",
+        "description": (
+            "Add or update one environment variable. Takes effect on the "
+            "next deploy Nobert triggers — this never deploys."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "key": {"type": "string"},
+                "value": {"type": "string"},
+                "target": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["key", "value"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "gmail_create_draft",
+        "description": (
+            "Create a Gmail draft. NEVER sends — Nobert must open Gmail "
+            "and send it himself."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "to": {"type": "string"},
+                "subject": {"type": "string"},
+                "body": {"type": "string"},
+            },
+            "required": ["to", "subject", "body"],
+            "additionalProperties": False,
+        },
+    },
+]
+
+MEMORY_TOOL = {
+    "name": "remember",
+    "description": (
+        "Save a short, durable fact about Nobert or his preferences for "
+        "future conversations (e.g. 'prefers Sonnet over Opus for cost', "
+        "'building a YouTube automation tool called NOBS AI'). Call this "
+        "whenever he tells you something worth remembering long-term — "
+        "don't wait to be asked. Not for one-off task details."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {"fact": {"type": "string"}},
+        "required": ["fact"],
+        "additionalProperties": False,
+    },
+}
 
 
 @dataclass

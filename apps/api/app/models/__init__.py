@@ -1,4 +1,5 @@
 from app.models.asset import Asset
+from app.models.assistant_memory import AssistantMemory
 from app.models.auth import AuthSession, SignupPin
 from app.models.compliance import ComplianceReport
 from app.models.cost_entry import CostEntry
@@ -15,6 +16,7 @@ from app.models.voiceover import Voiceover
 
 __all__ = [
     "Asset",
+    "AssistantMemory",
     "AuthSession",
     "ComplianceReport",
     "CostEntry",

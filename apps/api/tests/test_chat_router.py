@@ -236,3 +236,72 @@ def test_generated_pdf_is_stored_and_returned_as_a_url(client, monkeypatch, tmp_
 
     stored_path = tmp_path / generated["url"].removeprefix("/storage/")
     assert stored_path.read_bytes() == b"%PDF-1.4 fake pdf bytes"
+
+
+def test_remember_tool_persists_a_fact(client, db_session, monkeypatch):
+    from app.config import settings
+    from app.models.assistant_memory import AssistantMemory
+
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(settings, "llm_api_key", "key123")
+
+    responses = [
+        _FakeResponse(
+            "tool_use",
+            [_FakeBlock("tool_use", id="t1", name="remember", input={"fact": "likes Sonnet"})],
+        ),
+        _FakeResponse("end_turn", [_FakeBlock("text", text="Got it, I'll remember that.")]),
+    ]
+
+    class _FakeMessages:
+        def create(self, **kwargs):
+            return responses.pop(0)
+
+    class _FakeClient:
+        def __init__(self, api_key):
+            self.messages = _FakeMessages()
+
+    import anthropic
+
+    monkeypatch.setattr(anthropic, "Anthropic", _FakeClient)
+
+    response = client.post(
+        "/chat/messages", json={"message": "remember that I like Sonnet", "history": []}
+    )
+    assert response.status_code == 200
+
+    memory = (
+        db_session.query(AssistantMemory)
+        .filter(AssistantMemory.user_id == client.admin_user.id)
+        .one()
+    )
+    assert "likes Sonnet" in memory.content
+
+
+def test_memory_is_included_in_the_system_prompt_on_the_next_call(client, db_session, monkeypatch):
+    from app.config import settings
+    from app.models.assistant_memory import AssistantMemory
+
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(settings, "llm_api_key", "key123")
+
+    db_session.add(
+        AssistantMemory(user_id=client.admin_user.id, content="- building NOBS AI, a YouTube tool")
+    )
+    db_session.flush()
+
+    import app.routers.chat as chat_router
+
+    import services.ai.assistant.engine as engine_module
+
+    captured = {}
+
+    def fake_run_chat_turn(*args, **kwargs):
+        captured.update(kwargs)
+        return engine_module.ChatTurnResult(reply="ok", messages=[])
+
+    monkeypatch.setattr(chat_router, "run_chat_turn", fake_run_chat_turn)
+
+    response = client.post("/chat/messages", json={"message": "hi again", "history": []})
+    assert response.status_code == 200
+    assert "building NOBS AI, a YouTube tool" in captured["system_prompt"]
