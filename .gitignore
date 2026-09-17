@@ -12,6 +12,8 @@ node_modules/
 
 storage/local/*
 !storage/local/.gitkeep
+**/storage/local/*
+!**/storage/local/.gitkeep
 
 .DS_Store
 *.log
