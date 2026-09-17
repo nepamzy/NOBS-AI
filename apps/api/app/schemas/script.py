@@ -24,6 +24,10 @@ class SceneUpdate(BaseModel):
     transition: TransitionType | None = None
 
 
+class SceneRegenerateRequest(BaseModel):
+    instructions: str = ""
+
+
 class ScriptRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

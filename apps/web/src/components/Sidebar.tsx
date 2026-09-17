@@ -5,6 +5,7 @@ import { Logo } from "./Logo";
 const links = [
   { to: "/", label: "Dashboard", end: true },
   { to: "/create", label: "Create" },
+  { to: "/assistant", label: "Assistant" },
   { to: "/projects", label: "Projects" },
   { to: "/settings", label: "Settings" },
 ];

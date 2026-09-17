@@ -103,9 +103,11 @@ Pipeline: `Topic → Research → Script (scene-structured) → Storyboard → A
 
 **Multi-user accounts are IN scope** (built — see Part 6): Nobert (ADMIN) invites guest USER accounts via single-use signup PINs; each user's projects/videos are fully private; ADMIN generates unlimited videos free, guests spend `token_balance` (admin grants tokens manually — no payment processor connected, per Nobert's explicit instruction that only the admin side ever pays real money).
 
+**A narrow video-creation Assistant chat is IN scope** (built — see Part 6): a chat interface, scoped only to directing existing NOBS AI actions (create a video, check status, regenerate a scene, approve a storyboard) via tool use — not open-ended conversation. Distinct from the item below, which remains excluded.
+
 **Explicitly OUT of scope for V1** (don't build even if it seems like a logical next step):
 - Business automation agent
-- General day-to-day assistant chat product
+- A general-purpose, open-ended assistant chat (any topic, not just directing NOBS AI) — that's the future "Personal AI" branch
 - Automatic YouTube publishing (V2)
 - Analytics-driven content intelligence (V3)
 
@@ -122,7 +124,7 @@ Pipeline: `Topic → Research → Script (scene-structured) → Storyboard → A
 User gives NOBS AI a prompt like "Create a 3-minute YouTube video about 5 mistakes new developers make." NOBS AI handles: Idea → Research → Script → Scenes → Video → Voice → Assembly → Captions → Final MP4. Initially single-user (Nobert only).
 
 ## Interface concept
-Professional creative-studio style app. Sidebar: Dashboard, Create, Projects, Scripts, Videos, Assets, Settings. Main "Create Video" screen: a prompt box for the topic, plus Duration / Voice / Style selectors, and a Create Video button. The user should never need to understand Wan, Chatterbox, FFmpeg, GPUs, Runpod, or job queues — those are internal.
+Professional creative-studio style app. Sidebar: Dashboard, Create, Assistant, Projects, Scripts, Videos, Assets, Settings. Main "Create Video" screen: a prompt box for the topic, plus Duration / Voice / Style selectors, and a Create Video button. The user should never need to understand Wan, Chatterbox, FFmpeg, GPUs, Runpod, or job queues — those are internal.
 
 ## Dashboard
 Shows a greeting, stat cards (Videos total, This Week's count vs goal, Processing count), and a Recent Projects list with status (Completed / Processing %) and quick actions.
@@ -320,7 +322,9 @@ Open source tools identified:
 
 Stage: 7 (Rendering engine) code-complete at the orchestration level; stages 3, 4, and 8 (backend foundation, AI orchestration, project management) are also built. Concretely: FastAPI + PostgreSQL + Redis/RQ backend, React/Vite frontend, and the full state machine (Topic → Research → Script → Storyboard → Approval → Voice → Video Generation → Assembly → Captions → Thumbnail → Completed) all exist and are tested. Voice and video generation run per scene, each clip's requested duration is synced to its scene's *measured* voiceover length (not the script's estimate), and assembly conforms clips to that length before muxing/concatenating — no drift, no manual cut-and-join. Captions burn in from real word-timestamp data; thumbnails are extracted frames (A/B/C), no paid image-gen needed.
 
-**What's still gated, not started:** stages 5 and 6 (Voice engine, Video engine) have their abstractions and adapters (`services/voice/chatterbox`, `services/video/wan`) but no real provider is connected — `ChatterboxEngine`/`WanEngine` raise `ApprovalRequiredError` on first real use, exactly as designed, until Nobert approves a specific spend and provides `CHATTERBOX_API_URL` or `RUNPOD_API_KEY`/`WAN_ENDPOINT_ID` (or an ElevenLabs key, if that's the voice path chosen — see chat history on cost). No paid resources have been provisioned. No external accounts connected yet. Stage 9 (testing with real generated video) can't start until one of those is wired.
+**Engines are code-complete, still gated on real credentials:** all three previously-stub engines now have real implementations — `WanEngine` (services/video/wan) submits to a Runpod Serverless endpoint and polls to completion; `ElevenLabsEngine` (services/voice/elevenlabs, alongside the still-unimplemented `ChatterboxEngine`) calls ElevenLabs' TTS-with-timestamps API; `ResearchEngine`/`ScriptEngine` (services/ai/research, services/ai/script) call the real Anthropic API via structured outputs. All still raise `ApprovalRequiredError`/`EngineNotConfiguredError` exactly as designed until Nobert creates the relevant accounts himself (Anthropic Console, ElevenLabs, Runpod — external account creation isn't something Claude can do on his behalf) and adds the keys directly in Render's dashboard. No paid resources have been provisioned and no real video has been generated end-to-end yet — the Runpod/Wan input payload shape in particular is unverified against a real deployed template. Stage 9 (testing with a real generated video) still can't start until that first real run happens.
+
+**Assistant chat (also built):** `POST /chat/messages` (services/ai/assistant, apps/web `Assistant.tsx`) — a tool-use loop over the same LLM connection as script/research, scoped to 7 actions (list/get projects & videos, create a video, view a script, regenerate a scene, approve a storyboard) that all call directly into the existing REST endpoint functions, so it can't do anything a normal authenticated request couldn't. Same `ApprovalRequiredError`/`EngineNotConfiguredError` gating as everything else LLM-backed.
 
 **Next action:** Nobert decides voice provider (Chatterbox self-hosted/free vs. ElevenLabs paid) and video provider (Wan/Runpod), approves the specific cost, and provides the corresponding `.env` value — that's the one remaining blocker before a real end-to-end video can be produced.
 

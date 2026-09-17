@@ -14,7 +14,7 @@ from app.models.script import Scene, Script
 from app.models.user import User
 from app.models.video import Video
 from app.schemas.asset import AssetRead
-from app.schemas.script import SceneRead, SceneUpdate, ScriptRead
+from app.schemas.script import SceneRead, SceneRegenerateRequest, SceneUpdate, ScriptRead
 from app.schemas.video import VideoCreate, VideoRead
 from services.ai.script.engine import SceneDraft
 from services.common.errors import ApprovalRequiredError
@@ -145,6 +145,7 @@ def update_scene(
 def regenerate_scene(
     video_id: uuid.UUID,
     scene_id: uuid.UUID,
+    payload: SceneRegenerateRequest | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Scene:
@@ -176,8 +177,9 @@ def regenerate_scene(
         transition=scene.transition.value,
     )
 
+    instructions = payload.instructions if payload else ""
     try:
-        regenerated = get_script_engine().regenerate_scene(video.topic, draft)
+        regenerated = get_script_engine().regenerate_scene(video.topic, draft, instructions)
     except ApprovalRequiredError as exc:
         raise HTTPException(status_code=402, detail=exc.cost_warning.render()) from exc
 

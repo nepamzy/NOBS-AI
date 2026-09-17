@@ -2,6 +2,8 @@ import type {
   AdminUser,
   Asset,
   AuthResponse,
+  ChatMessage,
+  ChatResponse,
   CostCategory,
   Project,
   Scene,
@@ -155,4 +157,10 @@ export const api = {
     }),
 
   listPackages: () => request<TokenPackage[]>("/payments/packages"),
+
+  sendChatMessage: (message: string, history: ChatMessage[]) =>
+    request<ChatResponse>("/chat/messages", {
+      method: "POST",
+      body: JSON.stringify({ message, history }),
+    }),
 };

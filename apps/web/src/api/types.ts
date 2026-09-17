@@ -160,3 +160,16 @@ export interface TokenPackage {
   tokens: number;
   price_usd: number;
 }
+
+// `content` mirrors the Anthropic Messages API shape: a plain string for a
+// simple turn, or a list of content blocks (text/tool_use/tool_result) once
+// tool calls are involved — the UI only ever renders the text parts.
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string | Record<string, unknown>[];
+}
+
+export interface ChatResponse {
+  reply: string;
+  history: ChatMessage[];
+}
