@@ -1,3 +1,14 @@
+def _jsonable(value):
+    """Mimics what the real Anthropic SDK's Pydantic model_dump() does to a
+    nested object graph — plain dicts/lists, never a raw Python object —
+    since our fakes use plain namespaces instead of real Pydantic models."""
+    if hasattr(value, "__dict__"):
+        return {k: _jsonable(v) for k, v in vars(value).items()}
+    if isinstance(value, list):
+        return [_jsonable(v) for v in value]
+    return value
+
+
 class _FakeBlock:
     def __init__(self, type_, **fields):
         self.type = type_
@@ -6,7 +17,7 @@ class _FakeBlock:
             setattr(self, key, value)
 
     def model_dump(self):
-        return {"type": self.type, **self._fields}
+        return {"type": self.type, **{k: _jsonable(v) for k, v in self._fields.items()}}
 
 
 class _FakeResponse:
@@ -163,3 +174,65 @@ def test_video_attachment_is_rejected(client, monkeypatch):
     )
     assert response.status_code == 400
     assert "Video isn't supported" in response.json()["detail"]
+
+
+class _Namespace:
+    def __init__(self, **fields):
+        self.__dict__.update(fields)
+
+
+class _FakeFileDownload:
+    def __init__(self, content: bytes):
+        self._content = content
+
+    def write_to_file(self, path):
+        with open(path, "wb") as f:
+            f.write(self._content)
+
+
+def test_generated_pdf_is_stored_and_returned_as_a_url(client, monkeypatch, tmp_path):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(settings, "llm_api_key", "key123")
+    monkeypatch.setattr(settings, "local_storage_root", str(tmp_path))
+
+    output = _Namespace(type="bash_code_execution_output", file_id="file_abc")
+    exec_result = _Namespace(type="bash_code_execution_result", content=[output])
+    code_block = _FakeBlock("bash_code_execution_tool_result", content=exec_result)
+    text_block = _FakeBlock("text", text="Here's your PDF.")
+
+    class _FakeFiles:
+        def retrieve_metadata(self, file_id):
+            return _Namespace(filename="report.pdf", mime_type="application/pdf")
+
+        def download(self, file_id):
+            return _FakeFileDownload(b"%PDF-1.4 fake pdf bytes")
+
+    class _FakeMessages:
+        def create(self, **kwargs):
+            return _FakeResponse("end_turn", [code_block, text_block])
+
+    class _FakeClient:
+        def __init__(self, api_key):
+            self.messages = _FakeMessages()
+            self.files = _FakeFiles()
+
+    import anthropic
+
+    monkeypatch.setattr(anthropic, "Anthropic", _FakeClient)
+
+    response = client.post(
+        "/chat/messages", json={"message": "make me a pdf report", "history": []}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["reply"] == "Here's your PDF."
+    assert len(body["files"]) == 1
+    generated = body["files"][0]
+    assert generated["filename"] == "report.pdf"
+    assert generated["media_type"] == "application/pdf"
+    assert generated["url"].startswith("/storage/chat-outputs/")
+
+    stored_path = tmp_path / generated["url"].removeprefix("/storage/")
+    assert stored_path.read_bytes() == b"%PDF-1.4 fake pdf bytes"

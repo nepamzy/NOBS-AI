@@ -133,3 +133,58 @@ def test_tool_approval_required_becomes_tool_error(monkeypatch):
         tool_executor,
     )
     assert result.reply == "You're out of tokens."
+
+
+class _Namespace:
+    def __init__(self, **fields):
+        self.__dict__.update(fields)
+
+
+class _FakeFileDownload:
+    def __init__(self, content: bytes):
+        self._content = content
+
+    def write_to_file(self, path):
+        with open(path, "wb") as f:
+            f.write(self._content)
+
+
+def test_generated_pdf_is_downloaded_and_returned(monkeypatch):
+    output = _Namespace(type="bash_code_execution_output", file_id="file_abc")
+    exec_result = _Namespace(type="bash_code_execution_result", content=[output])
+    code_block = _FakeBlock("bash_code_execution_tool_result", content=exec_result)
+    text_block = _FakeBlock("text", text="Here's your PDF.")
+
+    class _FakeFiles:
+        def retrieve_metadata(self, file_id):
+            assert file_id == "file_abc"
+            return _Namespace(filename="report.pdf", mime_type="application/pdf")
+
+        def download(self, file_id):
+            assert file_id == "file_abc"
+            return _FakeFileDownload(b"%PDF-1.4 fake pdf bytes")
+
+    class _FakeMessages:
+        def create(self, **kwargs):
+            return _FakeResponse("end_turn", [code_block, text_block])
+
+    class _FakeClient:
+        def __init__(self, api_key):
+            self.messages = _FakeMessages()
+            self.files = _FakeFiles()
+
+    import anthropic
+
+    monkeypatch.setattr(anthropic, "Anthropic", _FakeClient)
+
+    result = run_chat_turn(
+        "anthropic", "key", "claude-opus-5", [{"role": "user", "content": "make me a pdf"}],
+        lambda n, i: {},
+    )
+
+    assert result.reply == "Here's your PDF."
+    assert len(result.generated_files) == 1
+    generated = result.generated_files[0]
+    assert generated.filename == "report.pdf"
+    assert generated.media_type == "application/pdf"
+    assert generated.content == b"%PDF-1.4 fake pdf bytes"

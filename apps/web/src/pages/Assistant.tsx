@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
-import { api, ApiError } from "../api/client";
-import type { ChatAttachment, ChatMessage } from "../api/types";
+import { api, ApiError, resolveStorageUrl } from "../api/client";
+import type { ChatAttachment, ChatMessage, GeneratedFile } from "../api/types";
 import { MicButton } from "../components/MicButton";
 
 // `content` is either a plain string (what the user typed) or a list of
@@ -45,6 +45,7 @@ export function Assistant() {
   const [attachment, setAttachment] = useState<ChatAttachment | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [latestFiles, setLatestFiles] = useState<GeneratedFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -73,6 +74,7 @@ export function Assistant() {
     setAttachment(null);
     setSending(true);
     setError(null);
+    setLatestFiles([]);
     // Optimistic: show the user's turn immediately, replace with the
     // server's full history (incl. any tool calls it made) once it returns.
     const optimisticContent = sentAttachment
@@ -85,6 +87,7 @@ export function Assistant() {
     try {
       const response = await api.sendChatMessage(message, history, sentAttachment ?? undefined);
       setHistory(response.history);
+      setLatestFiles(response.files);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
     } finally {
@@ -130,6 +133,22 @@ export function Assistant() {
         })}
         {sending && <p className="text-sm text-white/40">Thinking…</p>}
       </div>
+
+      {latestFiles.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {latestFiles.map((file, i) => (
+            <a
+              key={i}
+              href={resolveStorageUrl(file.url) ?? undefined}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md border border-accent-500/30 bg-accent-500/10 px-3 py-1.5 text-xs text-accent-300 hover:bg-accent-500/20"
+            >
+              📄 {file.filename} — download
+            </a>
+          ))}
+        </div>
+      )}
 
       {error && (
         <p className="mt-2 text-sm text-red-400">

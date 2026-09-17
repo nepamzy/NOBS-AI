@@ -1,5 +1,6 @@
 import base64
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -10,18 +11,28 @@ from app.db import get_db
 from app.models.enums import UserRole
 from app.models.project import Project
 from app.models.user import User
-from app.schemas.chat import ChatAttachment, ChatMessage, ChatRequest, ChatResponse
+from app.schemas.chat import (
+    ChatAttachment,
+    ChatMessage,
+    ChatRequest,
+    ChatResponse,
+    GeneratedFileRead,
+)
 from app.schemas.project import ProjectRead
 from app.schemas.script import SceneRegenerateRequest, ScriptRead
 from app.schemas.video import VideoCreate, VideoRead
+from app.storage import to_url
 from services.ai.assistant.engine import (
     ADMIN_SYSTEM_PROMPT_ADDENDUM,
+    CODE_EXECUTION_TOOL,
     NOBS_SYSTEM_PROMPT,
     NOBS_TOOLS,
     WEB_SEARCH_TOOL,
+    GeneratedFile,
     run_chat_turn,
 )
 from services.common.errors import EngineNotConfiguredError
+from services.storage.factory import get_storage_backend
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -54,6 +65,28 @@ def _attachment_content_block(attachment: ChatAttachment) -> dict:
         "type": block_type,
         "source": {"type": "base64", "media_type": attachment.media_type, "data": attachment.data},
     }
+
+
+def _store_generated_file(generated: GeneratedFile, user_id: uuid.UUID) -> GeneratedFileRead:
+    """Files the code_execution tool writes (e.g. a generated PDF) live only
+    in Claude's own Files API, which browsers can't fetch directly — save a
+    copy through the same StorageBackend videos use (local disk or Supabase
+    Storage) so the frontend gets an ordinary downloadable URL."""
+    key = f"chat-outputs/{user_id}/{uuid.uuid4()}-{generated.filename}"
+    local_path = Path(settings.local_storage_root) / key
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    local_path.write_bytes(generated.content)
+
+    backend = get_storage_backend(
+        settings.storage_backend,
+        settings.supabase_url,
+        settings.supabase_service_role_key,
+        settings.supabase_storage_bucket,
+    )
+    stored_path = backend.upload(str(local_path), key)
+    return GeneratedFileRead(
+        filename=generated.filename, media_type=generated.media_type, url=to_url(stored_path)
+    )
 
 
 def _build_tool_executor(db: Session, user: User):
@@ -150,7 +183,7 @@ def send_message(
     # video-creation-only assistant (CLAUDE.md Part 2).
     if user.role == UserRole.ADMIN:
         system_prompt = NOBS_SYSTEM_PROMPT + ADMIN_SYSTEM_PROMPT_ADDENDUM
-        tools = [*NOBS_TOOLS, WEB_SEARCH_TOOL]
+        tools = [*NOBS_TOOLS, WEB_SEARCH_TOOL, CODE_EXECUTION_TOOL]
     else:
         system_prompt = NOBS_SYSTEM_PROMPT
         tools = NOBS_TOOLS
@@ -171,4 +204,5 @@ def send_message(
     return ChatResponse(
         reply=result.reply,
         history=[ChatMessage(role=m["role"], content=m["content"]) for m in result.messages],
+        files=[_store_generated_file(f, user.id) for f in result.generated_files],
     )

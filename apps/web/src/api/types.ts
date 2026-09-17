@@ -175,7 +175,14 @@ export interface ChatAttachment {
   filename?: string;
 }
 
+export interface GeneratedFile {
+  filename: string;
+  media_type: string;
+  url: string | null;
+}
+
 export interface ChatResponse {
   reply: string;
+  files: GeneratedFile[];
   history: ChatMessage[];
 }

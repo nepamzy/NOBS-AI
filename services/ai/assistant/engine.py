@@ -24,7 +24,7 @@ history) capability admin mode adds.
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from services.common.errors import ApprovalRequiredError, EngineNotConfiguredError
 
@@ -48,16 +48,24 @@ ADMIN_SYSTEM_PROMPT_ADDENDUM = (
     "NOBS AI itself, he also wants you as a general assistant: deep "
     "research on any topic (use the web_search tool for anything "
     "time-sensitive or where accuracy matters — don't rely on memory "
-    "alone for facts, prices, or current events), coding help and "
-    "teaching across any language or framework, and practical "
-    "cybersecurity guidance (recognizing phishing/scams, account "
-    "hardening, safe practices) — defensive advice only, never help "
-    "attacking or compromising a system that isn't his own. If he shares "
-    "an image or PDF, analyze it directly and answer his question about "
-    "it. You cannot yet accept video files — only images and PDFs."
+    "alone for facts, prices, or current events), and real coding help — "
+    "not just talk: use the code_execution tool to actually write and run "
+    "code, test it, and iterate, the same way you would in a real "
+    "development session. You can also generate a real PDF file when "
+    "asked (write it with code_execution — pick whatever library is "
+    "available or install one — the file comes back as a download link). "
+    "Also give practical cybersecurity guidance (recognizing phishing/ "
+    "scams, account hardening, safe practices) — defensive advice only, "
+    "never help attacking or compromising a system that isn't his own. If "
+    "he shares an image or PDF, analyze it directly and answer his "
+    "question about it. You cannot yet accept video files — only images "
+    "and PDFs. You do not have direct access to his other accounts "
+    "(GitHub, Gmail, Vercel, etc.) — say so plainly if asked to act on "
+    "one, rather than pretending to."
 )
 
 WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search", "max_uses": 5}
+CODE_EXECUTION_TOOL = {"type": "code_execution_20260120", "name": "code_execution"}
 
 NOBS_TOOLS = [
     {
@@ -144,9 +152,49 @@ NOBS_TOOLS = [
 
 
 @dataclass
+class GeneratedFile:
+    filename: str
+    content: bytes
+    media_type: str
+
+
+@dataclass
 class ChatTurnResult:
     reply: str
     messages: list[dict]  # full updated conversation, incl. tool_use/tool_result blocks
+    generated_files: list[GeneratedFile] = field(default_factory=list)
+
+
+def _extract_generated_files(client, response) -> list[GeneratedFile]:
+    """Pulls out any file the code_execution tool wrote (e.g. a generated
+    PDF) so the caller can store/serve it — Claude's own Files API only
+    lets code-execution-created files be downloaded, not re-served
+    directly to a browser, so we pull the bytes down once here."""
+    import tempfile
+    from pathlib import Path
+
+    files = []
+    for block in response.content:
+        if block.type != "bash_code_execution_tool_result":
+            continue
+        result = block.content
+        if getattr(result, "type", None) != "bash_code_execution_result":
+            continue
+        for file_ref in getattr(result, "content", None) or []:
+            if file_ref.type != "bash_code_execution_output":
+                continue
+            metadata = client.files.retrieve_metadata(file_ref.file_id)
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_path = Path(tmp_dir) / Path(metadata.filename).name
+                client.files.download(file_ref.file_id).write_to_file(str(tmp_path))
+                files.append(
+                    GeneratedFile(
+                        filename=Path(metadata.filename).name,
+                        content=tmp_path.read_bytes(),
+                        media_type=metadata.mime_type,
+                    )
+                )
+    return files
 
 
 def run_chat_turn(
@@ -175,6 +223,7 @@ def run_chat_turn(
 
     client = anthropic.Anthropic(api_key=llm_api_key)
     messages = list(conversation)
+    generated_files: list[GeneratedFile] = []
 
     for _ in range(_MAX_TOOL_ROUNDS):
         response = client.messages.create(
@@ -186,10 +235,11 @@ def run_chat_turn(
         )
         content_blocks = [block.model_dump() for block in response.content]
         messages.append({"role": "assistant", "content": content_blocks})
+        generated_files.extend(_extract_generated_files(client, response))
 
         if response.stop_reason != "tool_use":
             reply = "".join(b["text"] for b in content_blocks if b["type"] == "text")
-            return ChatTurnResult(reply=reply, messages=messages)
+            return ChatTurnResult(reply=reply, messages=messages, generated_files=generated_files)
 
         tool_results = []
         for block in response.content:
@@ -233,4 +283,5 @@ def run_chat_turn(
             "answer yet — try rephrasing or asking a narrower question."
         ),
         messages=messages,
+        generated_files=generated_files,
     )

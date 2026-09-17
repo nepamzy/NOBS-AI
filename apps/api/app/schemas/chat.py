@@ -18,6 +18,13 @@ class ChatRequest(BaseModel):
     attachment: ChatAttachment | None = None
 
 
+class GeneratedFileRead(BaseModel):
+    filename: str
+    media_type: str
+    url: str | None
+
+
 class ChatResponse(BaseModel):
     reply: str
     history: list[ChatMessage]
+    files: list[GeneratedFileRead] = []
