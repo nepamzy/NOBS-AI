@@ -56,3 +56,6 @@ def test_create_draft_refreshes_token_and_never_sends(monkeypatch):
     assert "someone@example.com" in decoded
     assert "Subject line" in decoded
     assert "Body text" in decoded
+    assert "NOBS AI" in decoded
+    assert "nobs-ai.vercel.app/logo-mark.png" in decoded
+    assert "multipart/alternative" in decoded

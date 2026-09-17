@@ -15,11 +15,13 @@ browser consent step tied to his Google account.
 """
 
 import base64
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 import httpx
 
 from services.common.errors import EngineNotConfiguredError
+from services.connectors.gmail.template import render_branded_email
 
 _TOKEN_URL = "https://oauth2.googleapis.com/token"
 _DRAFTS_URL = "https://gmail.googleapis.com/gmail/v1/users/me/drafts"
@@ -56,11 +58,16 @@ class GmailConnector:
 
     def create_draft(self, to: str, subject: str, body: str) -> str:
         """Returns the draft's id — never sent, only visible in Gmail's
-        Drafts folder until Nobert sends it himself."""
+        Drafts folder until Nobert sends it himself. The draft is built with
+        both a plain-text part (a safe fallback for clients that don't render
+        HTML) and the branded NOBS AI HTML part — Gmail shows the HTML part
+        by default, and Nobert can still edit either before sending."""
         self._require_configured()
-        message = MIMEText(body)
+        message = MIMEMultipart("alternative")
         message["to"] = to
         message["subject"] = subject
+        message.attach(MIMEText(body, "plain"))
+        message.attach(MIMEText(render_branded_email(body), "html"))
         raw = base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
 
         response = httpx.post(
