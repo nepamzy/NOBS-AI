@@ -8,6 +8,7 @@ from app.models.project import Project
 from app.models.research import Research, ResearchSource
 from app.models.script import Scene, Script
 from app.models.thumbnail import Thumbnail
+from app.models.upload_schedule import UploadSchedule
 from app.models.user import User
 from app.models.user_setting import UserSetting
 from app.models.video import Video
@@ -29,6 +30,7 @@ __all__ = [
     "Script",
     "SignupPin",
     "Thumbnail",
+    "UploadSchedule",
     "User",
     "UserSetting",
     "Video",

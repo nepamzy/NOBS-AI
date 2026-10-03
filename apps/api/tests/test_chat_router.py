@@ -305,3 +305,61 @@ def test_memory_is_included_in_the_system_prompt_on_the_next_call(client, db_ses
     response = client.post("/chat/messages", json={"message": "hi again", "history": []})
     assert response.status_code == 200
     assert "building NOBS AI, a YouTube tool" in captured["system_prompt"]
+
+
+def test_chat_can_create_an_upload_schedule_via_tool_use(client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(settings, "llm_api_key", "key123")
+
+    project_response = client.post("/projects", json={"name": "Weekly Stories"})
+    project_id = project_response.json()["id"]
+
+    responses = [
+        _FakeResponse(
+            "tool_use",
+            [
+                _FakeBlock(
+                    "tool_use",
+                    id="t1",
+                    name="create_upload_schedule",
+                    input={
+                        "project_id": project_id,
+                        "day_of_week": 0,
+                        "trigger_time": "16:00",
+                        "topic": "Storytelling: Hero's Journey",
+                        "target_duration_seconds": 300,
+                    },
+                )
+            ],
+        ),
+        _FakeResponse(
+            "end_turn", [_FakeBlock("text", text="Scheduled every Monday at 16:00 UTC.")]
+        ),
+    ]
+
+    class _FakeMessages:
+        def create(self, **kwargs):
+            return responses.pop(0)
+
+    class _FakeClient:
+        def __init__(self, api_key):
+            self.messages = _FakeMessages()
+
+    import anthropic
+
+    monkeypatch.setattr(anthropic, "Anthropic", _FakeClient)
+
+    response = client.post(
+        "/chat/messages",
+        json={
+            "message": "set up a 5-minute Hero's Journey video every Monday at 4pm UTC",
+            "history": [],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["reply"] == "Scheduled every Monday at 16:00 UTC."
+
+    list_response = client.get("/upload-schedules")
+    assert len(list_response.json()) == 1

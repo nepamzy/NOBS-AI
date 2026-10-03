@@ -35,12 +35,16 @@ NOBS_SYSTEM_PROMPT = (
     "You are the NOBS AI assistant. You help the signed-in user create and "
     "manage their YouTube videos through this conversation. You can list "
     "their projects/videos, check a video's pipeline status, create a new "
-    "video, view a video's script, regenerate a single scene, and approve "
-    "a storyboard. Only ever act on the current user's own data — every "
-    "tool is already scoped to them, you don't need to ask whose data it "
-    "is. Be concise. If a tool call comes back describing something that "
-    "needs approval or setup (e.g. no tokens left, or a paid engine isn't "
-    "configured), explain that plainly to the user rather than retrying."
+    "video, view a video's script, regenerate a single scene, approve a "
+    "storyboard, and set up a recurring weekly schedule that starts "
+    "generating a video automatically (it still stops at the normal "
+    "storyboard-review checkpoint — a schedule only automates the start, "
+    "never anything after it). Only ever act on the current user's own "
+    "data — every tool is already scoped to them, you don't need to ask "
+    "whose data it is. Be concise. If a tool call comes back describing "
+    "something that needs approval or setup (e.g. no tokens left, or a "
+    "paid engine isn't configured), explain that plainly to the user "
+    "rather than retrying."
 )
 
 ADMIN_SYSTEM_PROMPT_ADDENDUM = (
@@ -71,7 +75,14 @@ ADMIN_SYSTEM_PROMPT_ADDENDUM = (
     "vars. You cannot trigger a deploy, delete anything, or touch domains.\n"
     "- Gmail: create drafts only, in his Drafts folder. You can NEVER "
     "send an email — say so plainly if asked to, rather than pretending.\n"
-    "If any of these three tools comes back with a 'not configured' "
+    "- YouTube: upload a finished video, which ALWAYS lands as private. "
+    "You can check its status. You can ONLY make it public "
+    "(youtube_publish_video) when Nobert explicitly asks for that exact "
+    "video in that exact turn — never on your own initiative, never as a "
+    "'natural next step' after uploading, never because a schedule says "
+    "it's time. If he hasn't explicitly said 'publish'/'make it public' "
+    "about a specific video, don't call it.\n"
+    "If any of these four tools comes back with a 'not configured' "
     "error, tell him plainly what's missing rather than retrying."
 )
 
@@ -148,6 +159,49 @@ NOBS_TOOLS = [
             "required": ["video_id", "scene_id"],
             "additionalProperties": False,
         },
+    },
+    {
+        "name": "create_upload_schedule",
+        "description": (
+            "Set up a recurring weekly video: on a given day/time, NOBS AI "
+            "will start generating it automatically. It STILL stops at the "
+            "normal storyboard-review checkpoint waiting for approval, and "
+            "is never uploaded or published without a separate, explicit "
+            "request later — this only automates the start of generation, "
+            "nothing after it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string"},
+                "day_of_week": {
+                    "type": "integer",
+                    "description": "0=Monday .. 6=Sunday",
+                },
+                "trigger_time": {
+                    "type": "string",
+                    "description": "HH:MM 24-hour UTC — when generation STARTS, "
+                    "not when it's done or published",
+                },
+                "topic": {"type": "string"},
+                "target_duration_seconds": {"type": "integer"},
+                "voice_preset": {"type": "string"},
+                "style_preset": {"type": "string"},
+            },
+            "required": [
+                "project_id",
+                "day_of_week",
+                "trigger_time",
+                "topic",
+                "target_duration_seconds",
+            ],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_upload_schedules",
+        "description": "List the current user's recurring weekly video schedules.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
         "name": "approve_storyboard",
@@ -284,6 +338,50 @@ CONNECTOR_TOOLS = [
                 "body": {"type": "string"},
             },
             "required": ["to", "subject", "body"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "youtube_upload_video",
+        "description": (
+            "Upload a finished video to YouTube. ALWAYS uploads as private "
+            "— there is no way to make it public from this tool. Use the "
+            "video's final_video_path (from get_video) as video_path."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "video_path": {"type": "string"},
+                "title": {"type": "string"},
+                "description": {"type": "string"},
+                "tags": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["video_path", "title", "description"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "youtube_get_upload_status",
+        "description": "Check processing/privacy status of a video already uploaded to YouTube.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"video_id": {"type": "string"}},
+            "required": ["video_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "youtube_publish_video",
+        "description": (
+            "Make a private YouTube video public. Only call this when Nobert "
+            "has explicitly asked, in this exact turn, to publish that "
+            "specific video — never proactively, never as part of finishing "
+            "a video, never on a schedule."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"video_id": {"type": "string"}},
+            "required": ["video_id"],
             "additionalProperties": False,
         },
     },

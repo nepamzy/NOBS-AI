@@ -9,7 +9,7 @@ from app.engines import get_script_engine
 from services.ai.orchestration.pipeline import PipelineBlocked, PipelineContext, advance_one_stage
 from services.ai.research.engine import ResearchEngine
 from services.storage.factory import get_storage_backend
-from services.video.wan.adapter import WanEngine
+from services.video.factory import get_video_engine
 from services.voice.factory import get_voice_engine
 
 
@@ -25,7 +25,12 @@ def _build_context() -> PipelineContext:
             settings.elevenlabs_api_key,
             settings.elevenlabs_voice_map,
         ),
-        video_engine=WanEngine(settings.runpod_api_key, settings.wan_endpoint_id),
+        video_engine=get_video_engine(
+            settings.video_provider,
+            settings.runpod_api_key,
+            settings.wan_endpoint_id,
+            settings.local_wan_api_url,
+        ),
         storage_root=settings.local_storage_root,
         music_library_path=settings.music_library_path,
         storage_backend=get_storage_backend(

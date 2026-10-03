@@ -22,6 +22,7 @@ from app.schemas.chat import (
 )
 from app.schemas.project import ProjectRead
 from app.schemas.script import SceneRegenerateRequest, ScriptRead
+from app.schemas.upload_schedule import UploadScheduleCreate, UploadScheduleRead
 from app.schemas.video import VideoCreate, VideoRead
 from app.storage import to_url
 from services.ai.assistant.engine import (
@@ -39,6 +40,7 @@ from services.common.errors import EngineNotConfiguredError
 from services.connectors.github.adapter import GitHubConnector
 from services.connectors.gmail.adapter import GmailConnector
 from services.connectors.vercel.adapter import VercelConnector
+from services.connectors.youtube.adapter import YouTubeConnector
 from services.storage.factory import get_storage_backend
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -100,6 +102,12 @@ def _build_tool_executor(db: Session, user: User):
     """Every tool below calls straight into the same router functions the
     regular REST endpoints use — same ownership checks, same token-balance
     gate, same ApprovalRequiredError behavior. Chat has no elevated access."""
+    from app.routers.upload_schedule import (
+        create_schedule as _create_schedule,
+    )
+    from app.routers.upload_schedule import (
+        list_schedules as _list_schedules,
+    )
     from app.routers.videos import (
         approve_storyboard as _approve_storyboard,
     )
@@ -165,6 +173,26 @@ def _build_tool_executor(db: Session, user: User):
             video = _approve_storyboard(uuid.UUID(tool_input["video_id"]), db=db, user=user)
             return VideoRead.model_validate(video).model_dump(mode="json")
 
+        if name == "create_upload_schedule":
+            schedule = _create_schedule(
+                UploadScheduleCreate(
+                    project_id=uuid.UUID(tool_input["project_id"]),
+                    day_of_week=tool_input["day_of_week"],
+                    trigger_time=tool_input["trigger_time"],
+                    topic=tool_input["topic"],
+                    target_duration_seconds=tool_input["target_duration_seconds"],
+                    voice_preset=tool_input.get("voice_preset", ""),
+                    style_preset=tool_input.get("style_preset", ""),
+                ),
+                db=db,
+                user=user,
+            )
+            return UploadScheduleRead.model_validate(schedule).model_dump(mode="json")
+
+        if name == "list_upload_schedules":
+            schedules = _list_schedules(db=db, user=user)
+            return [UploadScheduleRead.model_validate(s).model_dump(mode="json") for s in schedules]
+
         if name.startswith("github_"):
             github = GitHubConnector(settings.github_token, settings.github_default_repo)
             if name == "github_read_file":
@@ -216,6 +244,30 @@ def _build_tool_executor(db: Session, user: User):
                 tool_input["to"], tool_input["subject"], tool_input["body"]
             )
             return {"draft_id": draft_id, "note": "Saved to Drafts — not sent"}
+
+        if name.startswith("youtube_"):
+            youtube = YouTubeConnector(
+                settings.google_youtube_client_id,
+                settings.google_youtube_client_secret,
+                settings.google_youtube_refresh_token,
+            )
+            if name == "youtube_upload_video":
+                result = youtube.upload_video(
+                    tool_input["video_path"],
+                    tool_input["title"],
+                    tool_input["description"],
+                    tool_input.get("tags"),
+                )
+                return {
+                    "video_id": result.video_id,
+                    "privacy_status": result.privacy_status,
+                    "note": "Uploaded as private — ask explicitly to publish when ready",
+                }
+            if name == "youtube_get_upload_status":
+                return youtube.get_upload_status(tool_input["video_id"])
+            if name == "youtube_publish_video":
+                youtube.publish_video(tool_input["video_id"])
+                return {"published": True, "video_id": tool_input["video_id"]}
 
         if name == "remember":
             _append_memory(db, user.id, tool_input["fact"])

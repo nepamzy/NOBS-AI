@@ -40,8 +40,18 @@ class Settings(BaseSettings):
     # still capable enough for the assistant's coding/research/chat use.
     llm_model: str = "claude-sonnet-5"
 
+    # "wan_runpod" (default — paid Runpod Serverless GPU, see
+    # services/video/wan) or "wan_local" (free — a Wan model Nobert runs
+    # himself on his own GPU via scripts/local_wan_server.py, see
+    # LOCAL_WAN_SETUP.md). Same ApprovalRequiredError gating either way
+    # until configured — "local" isn't automatically zero-risk, it just
+    # means the cost (if any) is his own hardware/electricity, not a bill.
+    video_provider: str = "wan_runpod"
     runpod_api_key: str = ""
     wan_endpoint_id: str = ""
+    # Local Wan inference server URL (e.g. http://192.168.1.50:8765) — only
+    # used when video_provider=wan_local. Must already be running.
+    local_wan_api_url: str = ""
 
     # "chatterbox" (default — self-hosted, free per-call but needs an
     # already-running server, so it bills for uptime not usage) or
@@ -76,6 +86,16 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
     google_refresh_token: str = ""
+
+    # YouTube: a SEPARATE Google OAuth client from Gmail's (different scope:
+    # youtube.upload, not gmail). Upload always lands as private — there is
+    # no code path that makes a video public on its own; see
+    # services/connectors/youtube/adapter.py. Publishing is a deliberate,
+    # separate action Nobert (or the assistant, only when he explicitly asks)
+    # must take after reviewing the finished video.
+    google_youtube_client_id: str = ""
+    google_youtube_client_secret: str = ""
+    google_youtube_refresh_token: str = ""
 
     # --- Auth ---
     # Peppers PIN-code and session-token hashes so a stolen DB dump alone

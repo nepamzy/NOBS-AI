@@ -18,6 +18,7 @@ from app.routers import (
     projects,
     spend,
     styles,
+    upload_schedule,
     videos,
     voices,
 )
@@ -52,6 +53,7 @@ app.include_router(projects.router)
 app.include_router(settings_router.router)
 app.include_router(spend.router)
 app.include_router(styles.router)
+app.include_router(upload_schedule.router)
 app.include_router(videos.router)
 app.include_router(voices.router)
 
