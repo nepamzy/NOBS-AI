@@ -24,6 +24,7 @@ def _build_context() -> PipelineContext:
             settings.chatterbox_api_url,
             settings.elevenlabs_api_key,
             settings.elevenlabs_voice_map,
+            settings.chatterbox_voice_map,
         ),
         video_engine=get_video_engine(
             settings.video_provider,

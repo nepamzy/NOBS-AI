@@ -7,6 +7,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from services.common.media import probe_duration_seconds
 from services.rendering.ffmpeg.assembler import AssemblyError
 
 # Caps how many frames ever get attached to one LLM call — a smarter clip
@@ -24,28 +25,12 @@ class FrameSample:
     path: str
 
 
-def _probe_duration_seconds(video_path: str) -> float:
-    result = subprocess.run(
-        [
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            video_path,
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise AssemblyError(f"ffprobe duration lookup failed: {result.stderr}")
-    return float(result.stdout.strip())
-
-
 def extract_sample_frames(
     video_path: str, output_dir: str, interval_seconds: float = _DEFAULT_INTERVAL_SECONDS
 ) -> list[FrameSample]:
     """One frame every `interval_seconds`, widened automatically if that
     would exceed _MAX_FRAMES for a long video."""
-    duration = _probe_duration_seconds(video_path)
+    duration = probe_duration_seconds(video_path)
     if duration <= 0:
         return []
     frame_count = max(1, int(duration // interval_seconds) + 1)

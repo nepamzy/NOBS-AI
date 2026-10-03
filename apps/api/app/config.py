@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     # services/voice/elevenlabs).
     voice_provider: str = "chatterbox"
     chatterbox_api_url: str = ""
+    # JSON object mapping our voice_preset ids (services/voice/catalog.py)
+    # to a predefined or reference voice filename on the Chatterbox server,
+    # e.g. {"warm-narrator": "my_cloned_voice.wav"}. Only used when
+    # voice_provider=chatterbox.
+    chatterbox_voice_map: str = "{}"
     elevenlabs_api_key: str = ""
     # JSON object mapping our voice_preset ids (services/voice/catalog.py)
     # to real ElevenLabs voice_ids, e.g. {"warm-narrator": "<voice_id>"}.
