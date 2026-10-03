@@ -4,9 +4,11 @@
 
 One call advances by exactly one stage, mirroring
 services/ai/orchestration/pipeline.py's design. Transcription is free local
-compute (no block possible there beyond a missing dependency); clip
-selection calls the LLM and can block exactly like the main pipeline's
-SCRIPT stage. There is no review/approval stage in this pipeline the way
+compute (no block possible there beyond a missing dependency); SELECTING_
+CLIPS also samples video frames (free local ffmpeg, services/clipping/
+frames.py) so selection can weigh what's on screen, not just what's said,
+then calls the LLM and can block exactly like the main pipeline's SCRIPT
+stage. There is no review/approval stage in this pipeline the way
 STORYBOARD_REVIEW gates the main one — Nobert's own instruction for this
 feature was "give it a video, it ships automatically" (SourceVideo.auto_
 publish defaults True). Publishing each clip to the second YouTube channel
@@ -70,6 +72,7 @@ def advance_clip_stage(source_video, db: Session, ctx: ClipPipelineContext) -> N
 
     from services.clipping.audio import extract_audio_for_transcription
     from services.clipping.extractor import caption_clip, extract_clip
+    from services.clipping.frames import extract_sample_frames
     from services.clipping.selector import select_clips
 
     stage = source_video.stage
@@ -105,6 +108,7 @@ def advance_clip_stage(source_video, db: Session, ctx: ClipPipelineContext) -> N
 
     if stage == ClipJobStage.SELECTING_CLIPS:
         transcript = _read_transcript(source_video.transcript_path)
+        frames = extract_sample_frames(source_video.source_path, str(output_dir / "frames"))
 
         try:
             selections = select_clips(
@@ -113,6 +117,7 @@ def advance_clip_stage(source_video, db: Session, ctx: ClipPipelineContext) -> N
                 ctx.llm_provider,
                 ctx.llm_api_key,
                 ctx.llm_model,
+                frames=frames,
             )
         except ApprovalRequiredError as exc:
             _block(source_video, db, "selecting_clips", exc.cost_warning.render())

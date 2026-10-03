@@ -1,5 +1,6 @@
 import pytest
 
+from services.clipping.frames import FrameSample
 from services.clipping.selector import _snap_to_word_boundary, _timestamped_transcript, select_clips
 from services.clipping.transcription.engine import TranscriptResult, Word
 from services.common.errors import ApprovalRequiredError
@@ -84,3 +85,52 @@ def test_select_clips_snaps_llm_guesses_and_drops_degenerate_ones(monkeypatch):
     assert results[0].title == "Good clip"
     assert results[0].start_seconds == 0.5  # snapped to "world"'s real start
     assert results[0].end_seconds == 10.3  # snapped to "this"'s real end
+
+
+def test_select_clips_attaches_sample_frames_as_images(monkeypatch, tmp_path):
+    words = _words()
+    transcript = TranscriptResult(full_text="hello world this works", words=words)
+
+    frame_path = tmp_path / "frame_00001.jpg"
+    frame_path.write_bytes(b"\xff\xd8\xfakejpegbytes")
+    frames = [FrameSample(timestamp=0.0, path=str(frame_path))]
+
+    class _Parsed:
+        clips = []
+
+    class _FakeResponse:
+        parsed_output = _Parsed()
+
+    captured_kwargs = {}
+
+    class _FakeMessages:
+        def parse(self, **kwargs):
+            captured_kwargs.update(kwargs)
+            return _FakeResponse()
+
+    class _FakeClient:
+        def __init__(self, api_key):
+            self.messages = _FakeMessages()
+
+    import anthropic
+
+    monkeypatch.setattr(anthropic, "Anthropic", _FakeClient)
+
+    select_clips(
+        transcript,
+        1,
+        llm_provider="anthropic",
+        llm_api_key="key123",
+        llm_model="claude-sonnet-5",
+        frames=frames,
+    )
+
+    content = captured_kwargs["messages"][0]["content"]
+    image_blocks = [block for block in content if block["type"] == "image"]
+    assert len(image_blocks) == 1
+    assert image_blocks[0]["source"]["media_type"] == "image/jpeg"
+    # the text prompt mentions frames are attached, and a timestamp label
+    # precedes the image block itself
+    text_blocks = [block["text"] for block in content if block["type"] == "text"]
+    assert any("sample frames" in t for t in text_blocks)
+    assert "[00:00] frame:" in text_blocks

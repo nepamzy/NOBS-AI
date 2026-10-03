@@ -84,6 +84,7 @@ def test_selecting_clips_blocks_without_llm_config(db_session, monkeypatch, tmp_
     monkeypatch.setattr(
         "services.clipping.audio.extract_audio_for_transcription", lambda *a, **k: None
     )
+    monkeypatch.setattr("services.clipping.frames.extract_sample_frames", lambda *a, **k: [])
     ctx = _ctx(tmp_path)
     advance_clip_stage(video, db_session, ctx)  # -> TRANSCRIBING
     advance_clip_stage(video, db_session, ctx)  # -> SELECTING_CLIPS
@@ -99,6 +100,7 @@ def test_selecting_clips_creates_clip_rows(db_session, monkeypatch, tmp_path):
     monkeypatch.setattr(
         "services.clipping.audio.extract_audio_for_transcription", lambda *a, **k: None
     )
+    monkeypatch.setattr("services.clipping.frames.extract_sample_frames", lambda *a, **k: [])
     monkeypatch.setattr(
         "services.clipping.selector.select_clips",
         lambda *a, **k: [
