@@ -13,6 +13,7 @@ from app.models.user import User
 from app.models.user_setting import UserSetting
 from app.models.video import Video
 from app.models.video_clip import VideoClip
+from app.models.video_feedback import VideoFeedback
 from app.models.voiceover import Voiceover
 
 __all__ = [
@@ -35,5 +36,6 @@ __all__ = [
     "UserSetting",
     "Video",
     "VideoClip",
+    "VideoFeedback",
     "Voiceover",
 ]

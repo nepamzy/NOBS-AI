@@ -8,7 +8,11 @@ from app.db import get_db
 from app.models.upload_schedule import UploadSchedule
 from app.models.user import User
 from app.routers.videos import _owned_project_or_404
-from app.schemas.upload_schedule import UploadScheduleCreate, UploadScheduleRead
+from app.schemas.upload_schedule import (
+    UploadScheduleCreate,
+    UploadScheduleRead,
+    UploadScheduleUpdate,
+)
 
 router = APIRouter(prefix="/upload-schedules", tags=["upload-schedules"])
 
@@ -58,14 +62,15 @@ def list_schedules(
 
 
 @router.patch("/{schedule_id}", response_model=UploadScheduleRead)
-def set_schedule_enabled(
+def update_schedule(
     schedule_id: uuid.UUID,
-    enabled: bool,
+    payload: UploadScheduleUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> UploadSchedule:
     schedule = _owned_schedule_or_404(db, schedule_id, user)
-    schedule.enabled = enabled
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(schedule, field, value)
     db.commit()
     db.refresh(schedule)
     return schedule

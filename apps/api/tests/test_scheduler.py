@@ -63,6 +63,34 @@ def test_due_schedule_creates_a_video(db_session, monkeypatch):
     assert "created video" in results[0]
     assert len(enqueued) == 1
     db_session.refresh(schedule)
+
+
+def test_auto_publish_propagates_from_schedule_to_video(db_session, monkeypatch):
+    import app.routers.videos as videos_router
+    from app.models.upload_schedule import UploadSchedule
+    from app.models.video import Video
+
+    monkeypatch.setattr(videos_router, "enqueue_pipeline_start", lambda *a, **k: "job")
+
+    project = _create_project_and_user(db_session)
+    schedule = UploadSchedule(
+        project_id=project.id,
+        day_of_week=0,
+        trigger_time="16:00",
+        topic="x",
+        target_duration_seconds=300,
+        auto_publish=True,
+    )
+    db_session.add(schedule)
+    db_session.flush()
+
+    import services.scheduling.scheduler as scheduler_module
+
+    monkeypatch.setattr(scheduler_module, "datetime", _FixedDatetime)
+    scheduler_module.check_and_trigger_due_schedules(db_session)
+
+    video = db_session.query(Video).filter(Video.project_id == project.id).one()
+    assert video.auto_publish is True
     assert schedule.last_triggered_on == "2026-10-05"
 
 

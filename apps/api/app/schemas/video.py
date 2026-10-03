@@ -31,6 +31,9 @@ class VideoRead(BaseModel):
     stage_detail: str
     storyboard_approved: bool
     final_video_path: str | None
+    auto_publish: bool
+    youtube_video_id: str | None
+    youtube_published: bool
     created_at: datetime
     updated_at: datetime
 

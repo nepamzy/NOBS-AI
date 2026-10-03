@@ -96,6 +96,8 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
         return
 
     if stage == PipelineStage.SCRIPT:
+        from app.models.video_feedback import VideoFeedback
+
         research = db.query(Research).filter(Research.video_id == video.id).one_or_none()
         research_result = None
         if research is not None:
@@ -110,9 +112,23 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
                 story_opportunities=research.story_opportunities,
             )
 
+        # "Learning from its mistakes": not the model retraining, but
+        # Nobert's own notes on past videos in this project, fed back in as
+        # real context so future scripts are actually written with them in
+        # mind. Most recent first, capped so one project's history can't
+        # grow the prompt unboundedly.
+        recent_feedback = (
+            db.query(VideoFeedback)
+            .filter(VideoFeedback.project_id == video.project_id)
+            .order_by(VideoFeedback.created_at.desc())
+            .limit(10)
+            .all()
+        )
+        lessons = "\n".join(f"- {f.note}" for f in reversed(recent_feedback))
+
         try:
             draft = ctx.script_engine.generate(
-                video.topic, video.target_duration_seconds, research_result
+                video.topic, video.target_duration_seconds, research_result, lessons
             )
         except ApprovalRequiredError as exc:
             _block(video, db, "script", exc.cost_warning.render())

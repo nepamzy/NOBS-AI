@@ -5,6 +5,7 @@ import type { Asset, Script, Video } from "../api/types";
 import { LoadingState } from "../components/LoadingState";
 import { PipelineProgress, PipelineStatus, StageBlockedNotice } from "../components/PipelineStatus";
 import { StoryboardTimeline } from "../components/StoryboardTimeline";
+import { VideoPublishing } from "../components/VideoPublishing";
 
 const ASSET_LABELS: Record<Asset["asset_type"], string> = {
   script: "Script",
@@ -86,6 +87,11 @@ export function VideoDetail() {
       <h1 className="font-heading text-2xl font-semibold text-white">{video.topic}</h1>
       <p className="mt-1 text-sm text-white/50">
         Target: {Math.round(video.target_duration_seconds / 60)} min
+        {video.auto_publish && (
+          <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-300">
+            Automated — no manual review
+          </span>
+        )}
       </p>
 
       <div className="mt-5">
@@ -104,6 +110,10 @@ export function VideoDetail() {
             className="w-full rounded-lg border border-white/10 bg-black"
           />
         </div>
+      )}
+
+      {video.stage === "completed" && (
+        <VideoPublishing video={video} scriptTitle={script?.title ?? ""} onUpdate={setVideo} />
       )}
 
       {script && (

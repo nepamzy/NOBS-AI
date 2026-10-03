@@ -51,6 +51,15 @@ class Video(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # this video was assembled (music mixing is optional, never blocking).
     music_track: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
+    # Set from UploadSchedule.auto_publish at creation time (see
+    # services/scheduling/scheduler.py) — manually created videos always
+    # default False and stay fully manual. When True, apps/api/app/jobs/
+    # tasks.py auto-approves the storyboard and auto-publishes to YouTube
+    # once COMPLETED, instead of waiting for Nobert each time.
+    auto_publish: Mapped[bool] = mapped_column(default=False)
+    youtube_video_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    youtube_published: Mapped[bool] = mapped_column(default=False)
+
     project: Mapped["Project"] = relationship(back_populates="videos")
     script: Mapped["Script | None"] = relationship(
         back_populates="video", uselist=False, cascade="all, delete-orphan"

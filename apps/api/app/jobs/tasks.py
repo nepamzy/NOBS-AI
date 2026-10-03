@@ -42,7 +42,44 @@ def _build_context() -> PipelineContext:
     )
 
 
-_MAX_STAGES_PER_JOB = 10  # safety cap against an accidental infinite loop
+_MAX_STAGES_PER_JOB = 12  # safety cap against an accidental infinite loop — 10
+# real stages plus headroom for the one extra "blocked, then auto-approved"
+# pass an auto_publish video takes at STORYBOARD_REVIEW
+
+
+def _auto_publish_to_youtube(video, db) -> str:
+    """Only reached when video.auto_publish is True — Nobert's own
+    deliberate opt-in (see app/models/upload_schedule.py), never the
+    default. Failures here never undo the finished video; they're just
+    noted on stage_detail so he can upload/publish by hand instead."""
+    from app.models.script import Script
+    from app.routers.videos import publish_to_youtube, upload_to_youtube
+    from app.schemas.youtube import YouTubeUploadRequest
+    from services.common.errors import EngineNotConfiguredError
+
+    owner = video.project.owner
+    script = db.query(Script).filter(Script.video_id == video.id).one_or_none()
+    title = script.title if script else video.topic
+    description = script.hook if script else video.topic
+
+    try:
+        upload_to_youtube(
+            video.id,
+            YouTubeUploadRequest(title=title, description=description),
+            db=db,
+            user=owner,
+        )
+        publish_to_youtube(video.id, db=db, user=owner)
+    except EngineNotConfiguredError as exc:
+        video.stage_detail = f"Auto-publish skipped — YouTube not configured: {exc}"
+        db.commit()
+        return "auto-publish skipped: YouTube not configured"
+    except Exception as exc:  # noqa: BLE001 - a failed upload must not fail the whole job
+        video.stage_detail = f"Auto-publish failed: {exc}"
+        db.commit()
+        return f"auto-publish failed: {exc}"
+
+    return "auto-published to YouTube"
 
 
 def advance_pipeline(video_id: str, run_research: bool) -> str:
@@ -53,7 +90,10 @@ def advance_pipeline(video_id: str, run_research: bool) -> str:
 
     A PipelineBlocked is expected, normal behavior — it's reported, not
     raised as a job failure, so RQ doesn't retry-storm a call that will
-    never succeed without Nobert's action.
+    never succeed without Nobert's action. The ONE exception is the
+    storyboard-review block on a video with auto_publish=True (Nobert's
+    own explicit opt-in per schedule, off by default) — that one gets
+    auto-approved and the loop continues, instead of stopping.
     """
     db = SessionLocal()
     try:
@@ -72,7 +112,21 @@ def advance_pipeline(video_id: str, run_research: bool) -> str:
             try:
                 advance_one_stage(video, db, ctx, run_research=run_research)
             except PipelineBlocked as blocked:
+                if blocked.stage == "storyboard_review" and video.auto_publish:
+                    video.storyboard_approved = True
+                    video.stage_detail = "Auto-approved (schedule automation active)"
+                    db.commit()
+                    continue
                 return f"blocked at {blocked.stage}: {blocked.reason}"
+
+        ready_to_auto_publish = (
+            video.stage == PipelineStage.COMPLETED
+            and video.auto_publish
+            and not video.youtube_video_id
+        )
+        if ready_to_auto_publish:
+            publish_result = _auto_publish_to_youtube(video, db)
+            return f"{video.stage.value}; {publish_result}"
 
         if video.stage in terminal:
             return f"{video.stage.value}"

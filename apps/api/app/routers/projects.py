@@ -7,7 +7,9 @@ from app.auth.deps import get_current_user
 from app.db import get_db
 from app.models.project import Project
 from app.models.user import User
+from app.models.video_feedback import VideoFeedback
 from app.schemas.project import ProjectCreate, ProjectRead
+from app.schemas.video_feedback import VideoFeedbackRead
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -45,3 +47,22 @@ def get_project(
     if project is None or project.owner_id != user.id:
         raise HTTPException(status_code=404, detail="Project not found")
     return project
+
+
+@router.get("/{project_id}/feedback", response_model=list[VideoFeedbackRead])
+def list_project_feedback(
+    project_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> list[VideoFeedback]:
+    """The accumulated notes future scripts for this project are written
+    with in mind — see the SCRIPT stage in
+    services/ai/orchestration/pipeline.py."""
+    project = db.get(Project, project_id)
+    if project is None or project.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    return (
+        db.query(VideoFeedback)
+        .filter(VideoFeedback.project_id == project_id)
+        .order_by(VideoFeedback.created_at.desc())
+        .all()
+    )

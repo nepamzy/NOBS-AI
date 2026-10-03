@@ -39,6 +39,12 @@ class UploadSchedule(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     run_research: Mapped[bool] = mapped_column(Boolean, default=True)
 
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Starts False always — Nobert's own rule: watch it produce a few good
+    # videos manually first, then flip this on once he trusts it. When
+    # True, each Video this schedule creates inherits auto_publish=True
+    # (see services/scheduling/scheduler.py), which skips the storyboard
+    # and YouTube-publish checkpoints for THAT video only.
+    auto_publish: Mapped[bool] = mapped_column(Boolean, default=False)
     # Guards against firing twice for the same slot if the due-check runs
     # more than once within the same minute (e.g. worker restart).
     last_triggered_on: Mapped[str | None] = mapped_column(String(10), nullable=True)

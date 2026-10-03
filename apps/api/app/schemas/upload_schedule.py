@@ -15,6 +15,8 @@ class UploadScheduleCreate(BaseModel):
     voice_preset: str = ""
     style_preset: str = ""
     run_research: bool = True
+    # Defaults False always — see app/models/upload_schedule.py.
+    auto_publish: bool = False
 
     @field_validator("day_of_week")
     @classmethod
@@ -44,3 +46,11 @@ class UploadScheduleRead(BaseModel):
     style_preset: str
     run_research: bool
     enabled: bool
+    auto_publish: bool
+
+
+class UploadScheduleUpdate(BaseModel):
+    """PATCH body — only the fields actually sent are changed."""
+
+    enabled: bool | None = None
+    auto_publish: bool | None = None

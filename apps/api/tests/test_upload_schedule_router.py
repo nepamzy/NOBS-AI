@@ -90,7 +90,7 @@ def test_disable_and_delete_schedule(client):
     schedule_id = create_response.json()["id"]
 
     disable_response = client.patch(
-        f"/upload-schedules/{schedule_id}", params={"enabled": False}
+        f"/upload-schedules/{schedule_id}", json={"enabled": False}
     )
     assert disable_response.status_code == 200
     assert disable_response.json()["enabled"] is False
@@ -98,3 +98,25 @@ def test_disable_and_delete_schedule(client):
     delete_response = client.delete(f"/upload-schedules/{schedule_id}")
     assert delete_response.status_code == 204
     assert client.get("/upload-schedules").json() == []
+
+
+def test_activate_auto_publish(client):
+    project_id = _create_project(client)
+    create_response = client.post(
+        "/upload-schedules",
+        json={
+            "project_id": project_id,
+            "day_of_week": 3,
+            "trigger_time": "10:00",
+            "topic": "x",
+            "target_duration_seconds": 300,
+        },
+    )
+    schedule_id = create_response.json()["id"]
+    assert create_response.json()["auto_publish"] is False
+
+    response = client.patch(f"/upload-schedules/{schedule_id}", json={"auto_publish": True})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["auto_publish"] is True
+    assert body["enabled"] is True  # unspecified field untouched

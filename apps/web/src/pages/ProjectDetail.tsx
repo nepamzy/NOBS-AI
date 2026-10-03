@@ -4,6 +4,8 @@ import { api } from "../api/client";
 import type { Project, Video } from "../api/types";
 import { LoadingState } from "../components/LoadingState";
 import { PipelineStatus } from "../components/PipelineStatus";
+import { ProjectFeedback } from "../components/ProjectFeedback";
+import { UploadSchedules } from "../components/UploadSchedules";
 
 export function ProjectDetail() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -38,6 +40,9 @@ export function ProjectDetail() {
         ))}
         {videos.length === 0 && <p className="text-white/50">No videos in this project yet.</p>}
       </ul>
+
+      <UploadSchedules projectId={project.id} />
+      <ProjectFeedback projectId={project.id} />
     </div>
   );
 }

@@ -36,8 +36,32 @@ export interface Video {
   storyboard_approved: boolean;
   final_video_path: string | null;
   final_video_url: string | null;
+  auto_publish: boolean;
+  youtube_video_id: string | null;
+  youtube_published: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface UploadSchedule {
+  id: string;
+  project_id: string;
+  day_of_week: number; // 0=Monday .. 6=Sunday
+  trigger_time: string; // "HH:MM" UTC
+  topic: string;
+  target_duration_seconds: number;
+  voice_preset: string;
+  style_preset: string;
+  run_research: boolean;
+  enabled: boolean;
+  auto_publish: boolean;
+}
+
+export interface VideoFeedback {
+  id: string;
+  video_id: string;
+  note: string;
+  created_at: string;
 }
 
 export type TransitionType = "cut" | "fade" | "dissolve";

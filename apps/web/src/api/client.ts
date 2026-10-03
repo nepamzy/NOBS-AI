@@ -14,7 +14,9 @@ import type {
   SpendSummary,
   StylePreset,
   TokenPackage,
+  UploadSchedule,
   Video,
+  VideoFeedback,
   VoicePreset,
 } from "./types";
 
@@ -115,6 +117,48 @@ export const api = {
   regenerateScene: (videoId: string, sceneId: string) =>
     request<Scene>(`/videos/${videoId}/scenes/${sceneId}/regenerate`, { method: "POST" }),
   listAssets: (videoId: string) => request<Asset[]>(`/videos/${videoId}/assets`),
+
+  uploadToYoutube: (
+    videoId: string,
+    payload: { title: string; description: string; tags?: string[] },
+  ) =>
+    request<Video>(`/videos/${videoId}/youtube/upload`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  publishToYoutube: (videoId: string) =>
+    request<Video>(`/videos/${videoId}/youtube/publish`, { method: "POST" }),
+
+  addVideoFeedback: (videoId: string, note: string) =>
+    request<VideoFeedback>(`/videos/${videoId}/feedback`, {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    }),
+  listProjectFeedback: (projectId: string) =>
+    request<VideoFeedback[]>(`/projects/${projectId}/feedback`),
+
+  listSchedules: () => request<UploadSchedule[]>("/upload-schedules"),
+  createSchedule: (payload: {
+    project_id: string;
+    day_of_week: number;
+    trigger_time: string;
+    topic: string;
+    target_duration_seconds: number;
+    voice_preset?: string;
+    style_preset?: string;
+    run_research?: boolean;
+    auto_publish?: boolean;
+  }) =>
+    request<UploadSchedule>("/upload-schedules", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateSchedule: (id: string, payload: { enabled?: boolean; auto_publish?: boolean }) =>
+    request<UploadSchedule>(`/upload-schedules/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteSchedule: (id: string) => request<void>(`/upload-schedules/${id}`, { method: "DELETE" }),
 
   getSettings: () => request<Settings>("/settings"),
   updateSettings: (payload: Partial<Settings>) =>

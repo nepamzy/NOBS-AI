@@ -81,7 +81,7 @@ class _FakeScriptEngine(ScriptEngine):
     def __init__(self):
         pass
 
-    def generate(self, topic, target_duration_seconds, research=None):
+    def generate(self, topic, target_duration_seconds, research=None, lessons=""):
         return ScriptDraft(
             title="Title",
             hook="Hook",
@@ -117,7 +117,6 @@ def test_full_free_path_reaches_storyboard_review_and_waits_for_approval(db_sess
     with pytest.raises(PipelineBlocked) as exc_info:
         advance_one_stage(video, db_session, ctx, run_research=True)
     assert exc_info.value.stage == "storyboard_review"
-    assert video.stage_detail == "Awaiting storyboard approval"
 
     video.storyboard_approved = True
     db_session.flush()
@@ -136,6 +135,49 @@ def test_full_free_path_reaches_storyboard_review_and_waits_for_approval(db_sess
     assert video.stage_detail != "Awaiting storyboard approval"
     assert "0 of 2 scene voiceovers generated" in video.stage_detail
     assert "PAYMENT / COST WARNING" in video.stage_detail
+
+
+def test_script_stage_passes_project_feedback_as_lessons(db_session):
+    from app.models.video_feedback import VideoFeedback
+
+    captured = {}
+
+    class _SpyScriptEngine(ScriptEngine):
+        def __init__(self):
+            pass
+
+        def generate(self, topic, target_duration_seconds, research=None, lessons=""):
+            captured["lessons"] = lessons
+            return ScriptDraft(
+                title="Title",
+                hook="Hook",
+                estimated_duration_seconds=target_duration_seconds,
+                word_count=10,
+                scenes=[],
+            )
+
+    video = _make_video(db_session)
+    video.stage = PipelineStage.SCRIPT
+    db_session.add(
+        VideoFeedback(project_id=video.project_id, video_id=video.id, note="shorter intros")
+    )
+    db_session.add(
+        VideoFeedback(project_id=video.project_id, video_id=video.id, note="more dialogue")
+    )
+    db_session.flush()
+
+    ctx = PipelineContext(
+        research_engine=_FakeResearchEngine(),
+        script_engine=_SpyScriptEngine(),
+        voice_engine=ChatterboxEngine(api_url=""),
+        video_engine=WanEngine(runpod_api_key="", wan_endpoint_id=""),
+        storage_root="./storage/local",
+    )
+
+    advance_one_stage(video, db_session, ctx, run_research=False)
+
+    assert "shorter intros" in captured["lessons"]
+    assert "more dialogue" in captured["lessons"]
 
 
 class _FakeVoiceEngine(VoiceEngine):

@@ -74,6 +74,7 @@ class ScriptEngine:
         topic: str,
         target_duration_seconds: int,
         research: ResearchResult | None = None,
+        lessons: str = "",
     ) -> ScriptDraft:
         if not self._llm_provider or not self._llm_api_key:
             raise ApprovalRequiredError(
@@ -107,6 +108,12 @@ class ScriptEngine:
                 f"Interesting findings: {research.interesting_findings}\n"
                 f"Story opportunities: {research.story_opportunities}"
             )
+        lessons_context = ""
+        if lessons:
+            lessons_context = (
+                "\n\nNotes from Nobert on past videos in this project — "
+                f"apply them to this one:\n{lessons}"
+            )
         response = client.messages.parse(
             model=self._llm_model,
             max_tokens=_MAX_OUTPUT_TOKENS,
@@ -120,7 +127,7 @@ class ScriptEngine:
                         "5-12 seconds of narration with its own visual_prompt "
                         "(a text-to-video generation prompt describing what "
                         "should appear on screen) and a transition "
-                        "('cut', 'fade', or 'dissolve')." + research_context
+                        "('cut', 'fade', or 'dissolve')." + research_context + lessons_context
                     ),
                 }
             ],

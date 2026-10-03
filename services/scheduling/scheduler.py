@@ -2,14 +2,16 @@
 the EXACT SAME pipeline a manually created video goes through (CLAUDE.md's
 Topic -> Research -> Script -> Storyboard -> [approval] -> ... pipeline).
 
-This is deliberately the only thing a schedule does. It does NOT touch
-YouTube, does NOT know about "publish", and does NOT bypass the
-STORYBOARD_REVIEW gate in services/ai/orchestration/pipeline.py — a
-scheduled video stops at the same checkpoint a manual one does, waiting for
-Nobert to approve the storyboard before anything that costs money (voice,
-video generation) runs. That gate is what makes "review step" true here;
-nothing extra was added to enforce it because nothing extra was needed —
-reusing the real pipeline means the safety comes for free.
+By default this stops at the same STORYBOARD_REVIEW checkpoint a manual
+video does — nothing extra was built to enforce that, reusing the real
+pipeline means the safety comes for free. The one opt-in exception is
+`schedule.auto_publish` (off by default, per Nobert's own instruction:
+watch it produce a few good videos manually first, then flip it on once
+he trusts it) — set on the Video it creates, read by
+apps/api/app/jobs/tasks.py to skip the storyboard wait AND upload +
+publish to YouTube automatically once finished. Off, this schedule is
+exactly as safe as a manual video; on, Nobert made that call deliberately
+and can switch it back off at any time.
 
 Runs inside apps/worker/worker.py via SchedulerRunner, in a background
 thread (APScheduler), alongside the RQ worker loop in the same process.
@@ -73,6 +75,7 @@ def check_and_trigger_due_schedules(db: Session) -> list[str]:
                 db=db,
                 user=owner,
             )
+            video.auto_publish = schedule.auto_publish
             schedule.last_triggered_on = today
             db.commit()
             results.append(f"schedule {schedule.id}: created video {video.id}")

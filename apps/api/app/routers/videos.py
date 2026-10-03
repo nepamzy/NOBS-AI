@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user
+from app.config import settings
 from app.db import get_db
 from app.engines import get_script_engine
 from app.jobs.queue import enqueue_pipeline_start
@@ -13,11 +14,15 @@ from app.models.project import Project
 from app.models.script import Scene, Script
 from app.models.user import User
 from app.models.video import Video
+from app.models.video_feedback import VideoFeedback
 from app.schemas.asset import AssetRead
 from app.schemas.script import SceneRead, SceneRegenerateRequest, SceneUpdate, ScriptRead
 from app.schemas.video import VideoCreate, VideoRead
+from app.schemas.video_feedback import VideoFeedbackCreate, VideoFeedbackRead
+from app.schemas.youtube import YouTubeUploadRequest
 from services.ai.script.engine import SceneDraft
-from services.common.errors import ApprovalRequiredError
+from services.common.errors import ApprovalRequiredError, EngineNotConfiguredError
+from services.connectors.youtube.adapter import YouTubeConnector
 
 router = APIRouter(prefix="/videos", tags=["videos"])
 
@@ -218,3 +223,80 @@ def approve_storyboard(
     enqueue_pipeline_start(video_id=video.id, run_research=False)
 
     return video
+
+
+@router.post("/{video_id}/youtube/upload", response_model=VideoRead)
+def upload_to_youtube(
+    video_id: uuid.UUID,
+    payload: YouTubeUploadRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Video:
+    """Always uploads private — see services/connectors/youtube/adapter.py.
+    There is no parameter on this endpoint that can make it public."""
+    video = _owned_video_or_404(db, video_id, user)
+    if not video.final_video_path:
+        raise HTTPException(status_code=409, detail="Video has no finished file to upload yet")
+
+    youtube = YouTubeConnector(
+        settings.google_youtube_client_id,
+        settings.google_youtube_client_secret,
+        settings.google_youtube_refresh_token,
+    )
+    try:
+        result = youtube.upload_video(
+            video.final_video_path, payload.title, payload.description, payload.tags
+        )
+    except EngineNotConfiguredError as exc:
+        raise HTTPException(status_code=402, detail=str(exc)) from exc
+    video.youtube_video_id = result.video_id
+    db.commit()
+    db.refresh(video)
+    return video
+
+
+@router.post("/{video_id}/youtube/publish", response_model=VideoRead)
+def publish_to_youtube(
+    video_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> Video:
+    """The one and only action that makes a video public. Never called
+    automatically — only a direct request, here or via the assistant tool
+    when Nobert explicitly asks for this exact video."""
+    video = _owned_video_or_404(db, video_id, user)
+    if not video.youtube_video_id:
+        raise HTTPException(status_code=409, detail="Video hasn't been uploaded to YouTube yet")
+
+    youtube = YouTubeConnector(
+        settings.google_youtube_client_id,
+        settings.google_youtube_client_secret,
+        settings.google_youtube_refresh_token,
+    )
+    try:
+        youtube.publish_video(video.youtube_video_id)
+    except EngineNotConfiguredError as exc:
+        raise HTTPException(status_code=402, detail=str(exc)) from exc
+    video.youtube_published = True
+    db.commit()
+    db.refresh(video)
+    return video
+
+
+@router.post("/{video_id}/feedback", response_model=VideoFeedbackRead, status_code=201)
+def add_video_feedback(
+    video_id: uuid.UUID,
+    payload: VideoFeedbackCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> VideoFeedback:
+    """Nobert's note on a finished video — the real, honest version of
+    "learning from mistakes": a growing history future script generation
+    for this SAME PROJECT is given as context (see the SCRIPT stage in
+    services/ai/orchestration/pipeline.py), not the model retraining
+    itself."""
+    video = _owned_video_or_404(db, video_id, user)
+
+    feedback = VideoFeedback(project_id=video.project_id, video_id=video.id, note=payload.note)
+    db.add(feedback)
+    db.commit()
+    db.refresh(feedback)
+    return feedback
