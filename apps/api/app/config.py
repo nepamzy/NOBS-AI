@@ -97,6 +97,26 @@ class Settings(BaseSettings):
     google_youtube_client_secret: str = ""
     google_youtube_refresh_token: str = ""
 
+    # --- Clipping (upload an existing video, get short clips out —
+    # services/clipping) ---
+    # Transcription: only "local_whisper" is implemented (free, CPU,
+    # see services/clipping/transcription/local_whisper) — no key needed.
+    transcription_provider: str = "local_whisper"
+    # "tiny"/"base"/"small"/"medium"/"large-v3" — bigger is more accurate
+    # and slower. "small" is the default balance for CPU transcription.
+    whisper_model_size: str = "small"
+    clip_target_count: int = 5
+
+    # A SECOND, separate YouTube channel's OAuth client — the "ship clips
+    # to my other channel" destination. Same drafts-style safety as the
+    # main YouTube connector: clips upload private; auto-publish only
+    # happens because SourceVideo.auto_publish defaults True (Nobert's
+    # explicit instruction for this specific feature), and can be turned
+    # off per upload.
+    clips_youtube_client_id: str = ""
+    clips_youtube_client_secret: str = ""
+    clips_youtube_refresh_token: str = ""
+
     # --- Auth ---
     # Peppers PIN-code and session-token hashes so a stolen DB dump alone
     # doesn't reveal valid codes/tokens. Must be set for auth to work at all

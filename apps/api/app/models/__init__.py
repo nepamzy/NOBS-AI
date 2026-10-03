@@ -1,12 +1,14 @@
 from app.models.asset import Asset
 from app.models.assistant_memory import AssistantMemory
 from app.models.auth import AuthSession, SignupPin
+from app.models.clip import Clip
 from app.models.compliance import ComplianceReport
 from app.models.cost_entry import CostEntry
 from app.models.jobs import GenerationJob, RenderJob
 from app.models.project import Project
 from app.models.research import Research, ResearchSource
 from app.models.script import Scene, Script
+from app.models.source_video import SourceVideo
 from app.models.thumbnail import Thumbnail
 from app.models.upload_schedule import UploadSchedule
 from app.models.user import User
@@ -20,6 +22,7 @@ __all__ = [
     "Asset",
     "AssistantMemory",
     "AuthSession",
+    "Clip",
     "ComplianceReport",
     "CostEntry",
     "GenerationJob",
@@ -30,6 +33,7 @@ __all__ = [
     "Scene",
     "Script",
     "SignupPin",
+    "SourceVideo",
     "Thumbnail",
     "UploadSchedule",
     "User",

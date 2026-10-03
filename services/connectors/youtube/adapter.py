@@ -82,9 +82,21 @@ class YouTubeConnector:
         and calls publish_video() himself when he's ready to make it public."""
         self._require_configured()
 
-        path = Path(video_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Video file not found: {video_path}")
+        if video_path.startswith("http://") or video_path.startswith("https://"):
+            # STORAGE_BACKEND=supabase stores the finished artifact's path
+            # as a remote URL (see services/storage) — fetch the bytes
+            # before handing them to YouTube's upload, which needs a real
+            # file on disk either way.
+            download = httpx.get(video_path, timeout=_UPLOAD_TIMEOUT_SECONDS)
+            download.raise_for_status()
+            video_bytes = download.content
+            filename = video_path.rsplit("/", 1)[-1] or "video.mp4"
+        else:
+            path = Path(video_path)
+            if not path.exists():
+                raise FileNotFoundError(f"Video file not found: {video_path}")
+            video_bytes = path.read_bytes()
+            filename = path.name
 
         metadata = {
             "snippet": {"title": title[:100], "description": description, "tags": tags or []},
@@ -96,7 +108,7 @@ class YouTubeConnector:
             headers={"Authorization": f"Bearer {self._access_token()}"},
             files={
                 "metadata": (None, json.dumps(metadata), "application/json"),
-                "file": (path.name, path.read_bytes(), "video/mp4"),
+                "file": (filename, video_bytes, "video/mp4"),
             },
             timeout=_UPLOAD_TIMEOUT_SECONDS,
         )

@@ -18,6 +18,19 @@ class PipelineStage(str, enum.Enum):
     FAILED = "failed"
 
 
+class ClipJobStage(str, enum.Enum):
+    """Where an uploaded long-form video sits in the clipping pipeline
+    (services/clipping/pipeline.py) — upload -> transcribe -> pick clips ->
+    cut -> (if auto_publish) upload+publish to the second YouTube channel."""
+
+    UPLOADED = "uploaded"
+    TRANSCRIBING = "transcribing"
+    SELECTING_CLIPS = "selecting_clips"
+    EXTRACTING = "extracting"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class JobStatus(str, enum.Enum):
     QUEUED = "queued"
     RUNNING = "running"

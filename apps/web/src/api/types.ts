@@ -64,6 +64,39 @@ export interface VideoFeedback {
   created_at: string;
 }
 
+export type ClipJobStage =
+  | "uploaded"
+  | "transcribing"
+  | "selecting_clips"
+  | "extracting"
+  | "completed"
+  | "failed";
+
+export interface SourceVideo {
+  id: string;
+  original_filename: string;
+  stage: ClipJobStage;
+  stage_detail: string;
+  target_clip_count: number;
+  auto_publish: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Clip {
+  id: string;
+  source_video_id: string;
+  start_seconds: number;
+  end_seconds: number;
+  title: string;
+  reason: string;
+  clip_path: string | null;
+  clip_url: string | null;
+  youtube_video_id: string | null;
+  youtube_published: boolean;
+  created_at: string;
+}
+
 export type TransitionType = "cut" | "fade" | "dissolve";
 
 export interface Scene {

@@ -13,6 +13,7 @@ from app.routers import (
     admin,
     auth,
     chat,
+    clips,
     health,
     payments,
     projects,
@@ -48,6 +49,7 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(chat.router)
+app.include_router(clips.router)
 app.include_router(payments.router)
 app.include_router(projects.router)
 app.include_router(settings_router.router)

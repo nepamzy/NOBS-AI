@@ -76,6 +76,7 @@ def client(db_session, monkeypatch):
     the `client_as` fixture for a non-admin user."""
     from datetime import UTC, datetime, timedelta
 
+    import app.routers.clips as clips_router
     import app.routers.videos as videos_router
     from app.auth.security import generate_session_token, hash_lookup_value, hash_password
     from app.config import settings
@@ -95,6 +96,14 @@ def client(db_session, monkeypatch):
         return "fake-job-id"
 
     monkeypatch.setattr(videos_router, "enqueue_pipeline_start", fake_enqueue)
+
+    enqueued_clips: list[dict] = []
+
+    def fake_enqueue_clip(source_video_id):
+        enqueued_clips.append({"source_video_id": source_video_id})
+        return "fake-clip-job-id"
+
+    monkeypatch.setattr(clips_router, "enqueue_clip_pipeline_start", fake_enqueue_clip)
 
     def override_get_db():
         yield db_session
@@ -121,6 +130,7 @@ def client(db_session, monkeypatch):
 
     test_client = TestClient(app, headers={"Authorization": f"Bearer {token}"})
     test_client.enqueued_jobs = enqueued  # type: ignore[attr-defined]
+    test_client.enqueued_clip_jobs = enqueued_clips  # type: ignore[attr-defined]
     test_client.admin_user = admin  # type: ignore[attr-defined]
 
     yield test_client

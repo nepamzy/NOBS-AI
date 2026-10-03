@@ -3,6 +3,7 @@ import { Layout } from "./components/Layout";
 import { RequireAdmin, RequireAuth } from "./auth/RequireAuth";
 import { AdminDashboard } from "./pages/AdminDashboard";
 import { Assistant } from "./pages/Assistant";
+import { Clips } from "./pages/Clips";
 import { CreateVideo } from "./pages/CreateVideo";
 import { Dashboard } from "./pages/Dashboard";
 import { Login } from "./pages/Login";
@@ -21,6 +22,7 @@ export function App() {
         <Route element={<Layout />}>
           <Route index element={<Dashboard />} />
           <Route path="create" element={<CreateVideo />} />
+          <Route path="clips" element={<Clips />} />
           <Route path="assistant" element={<Assistant />} />
           <Route path="projects" element={<Projects />} />
           <Route path="projects/:projectId" element={<ProjectDetail />} />

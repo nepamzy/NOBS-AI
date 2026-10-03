@@ -7,6 +7,10 @@ from app.config import settings
 
 _redis_conn = redis.from_url(settings.redis_url)
 pipeline_queue = Queue("nobs-ai-pipeline", connection=_redis_conn)
+# Separate queue: a long CPU-bound transcription shouldn't sit ahead of a
+# quick video-generation stage advance, or vice versa — see
+# apps/worker/worker.py, which listens to both with one process for now.
+clip_queue = Queue("nobs-ai-clips", connection=_redis_conn)
 
 
 def enqueue_pipeline_start(video_id: uuid.UUID, run_research: bool) -> str:
@@ -17,5 +21,13 @@ def enqueue_pipeline_start(video_id: uuid.UUID, run_research: bool) -> str:
         "app.jobs.tasks.advance_pipeline",
         str(video_id),
         run_research,
+    )
+    return job.id
+
+
+def enqueue_clip_pipeline_start(source_video_id: uuid.UUID) -> str:
+    job = clip_queue.enqueue(
+        "app.jobs.clip_tasks.advance_clip_pipeline",
+        str(source_video_id),
     )
     return job.id

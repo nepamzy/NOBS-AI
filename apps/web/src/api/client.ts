@@ -5,12 +5,14 @@ import type {
   ChatAttachment,
   ChatMessage,
   ChatResponse,
+  Clip,
   CostCategory,
   Project,
   Scene,
   Script,
   Settings,
   SignupPin,
+  SourceVideo,
   SpendSummary,
   StylePreset,
   TokenPackage,
@@ -85,6 +87,30 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
 
   if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
+}
+
+// Separate from request(): a file upload must NOT set Content-Type itself —
+// the browser sets it (with the multipart boundary) when the body is a
+// FormData instance. Setting it manually breaks the upload silently.
+async function upload<T>(path: string, formData: FormData): Promise<T> {
+  const token = getStoredToken();
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  if (!response.ok) {
+    let detail = response.statusText;
+    try {
+      const body = await response.json();
+      detail = body.detail ?? detail;
+    } catch {
+      // response body wasn't JSON — fall back to statusText
+    }
+    throw new ApiError(response.status, detail);
+  }
   return response.json() as Promise<T>;
 }
 
@@ -208,4 +234,20 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ message, history, attachment: attachment ?? null }),
     }),
+
+  uploadSourceVideo: (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return upload<SourceVideo>("/source-videos", formData);
+  },
+  listSourceVideos: () => request<SourceVideo[]>("/source-videos"),
+  getSourceVideo: (id: string) => request<SourceVideo>(`/source-videos/${id}`),
+  updateSourceVideo: (id: string, payload: { auto_publish?: boolean }) =>
+    request<SourceVideo>(`/source-videos/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  listClips: (sourceVideoId: string) =>
+    request<Clip[]>(`/source-videos/${sourceVideoId}/clips`),
+  publishClip: (clipId: string) => request<Clip>(`/clips/${clipId}/publish`, { method: "POST" }),
 };
