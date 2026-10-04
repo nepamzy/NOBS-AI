@@ -4,10 +4,9 @@ from alembic import context
 from app import models  # noqa: F401 — registers all model classes on Base
 from app.config import settings
 from app.db import Base
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import create_engine, pool
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.database_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -27,11 +26,11 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    # Built directly from settings.database_url, bypassing ConfigParser's
+    # set_main_option/get_section round-trip — that path treats any literal
+    # "%" in the URL (e.g. a password's URL-encoded "@" as "%40") as its own
+    # interpolation syntax and raises ValueError.
+    connectable = create_engine(settings.database_url, poolclass=pool.NullPool)
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
