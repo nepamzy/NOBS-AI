@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
-from app.models.enums import CostCategory
+from app.models.enums import BillingType, CostCategory, CostStatus
 from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 
 
@@ -24,6 +24,13 @@ class CostEntry(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     purpose: Mapped[str] = mapped_column(Text)
     video_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("videos.id"), nullable=True
+    )
+
+    status: Mapped[CostStatus] = mapped_column(
+        Enum(CostStatus, name="cost_status"), default=CostStatus.ACTIVE, server_default="ACTIVE"
+    )
+    billing_type: Mapped[BillingType | None] = mapped_column(
+        Enum(BillingType, name="billing_type"), nullable=True
     )
 
     estimated_cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -11,6 +11,7 @@ import { ProjectDetail } from "./pages/ProjectDetail";
 import { Projects } from "./pages/Projects";
 import { Settings } from "./pages/Settings";
 import { Signup } from "./pages/Signup";
+import { SpendDashboard } from "./pages/SpendDashboard";
 import { VideoDetail } from "./pages/VideoDetail";
 
 export function App() {
@@ -30,6 +31,7 @@ export function App() {
           <Route path="settings" element={<Settings />} />
           <Route element={<RequireAdmin />}>
             <Route path="admin" element={<AdminDashboard />} />
+            <Route path="spend" element={<SpendDashboard />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

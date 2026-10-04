@@ -2,11 +2,14 @@ import type {
   AdminUser,
   Asset,
   AuthResponse,
+  BillingType,
   ChatAttachment,
   ChatMessage,
   ChatResponse,
   Clip,
   CostCategory,
+  CostEntry,
+  CostStatus,
   Project,
   Scene,
   Script,
@@ -206,9 +209,21 @@ export const api = {
     category: CostCategory;
     service: string;
     purpose: string;
+    status?: CostStatus;
+    billing_type?: BillingType | null;
     estimated_cost_usd?: number | null;
     actual_cost_usd?: number | null;
-  }) => request<void>("/spend", { method: "POST", body: JSON.stringify(payload) }),
+  }) => request<CostEntry>("/spend", { method: "POST", body: JSON.stringify(payload) }),
+  updateSpendEntry: (
+    id: string,
+    payload: {
+      status?: CostStatus;
+      billing_type?: BillingType | null;
+      estimated_cost_usd?: number | null;
+      actual_cost_usd?: number | null;
+    },
+  ) => request<CostEntry>(`/spend/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  deleteSpendEntry: (id: string) => request<void>(`/spend/${id}`, { method: "DELETE" }),
 
   listVoices: () => request<VoicePreset[]>("/voices"),
   listStyles: () => request<StylePreset[]>("/styles"),

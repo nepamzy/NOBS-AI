@@ -78,3 +78,21 @@ class CostCategory(str, enum.Enum):
     NETWORKING = "networking"
     DOMAIN = "domain"
     OTHER = "other"
+
+
+class CostStatus(str, enum.Enum):
+    """Whether a cost entry is actually billing right now."""
+
+    ACTIVE = "active"
+    PENDING = "pending"
+    STOPPED = "stopped"
+
+
+class BillingType(str, enum.Enum):
+    HOURLY = "hourly"
+    PER_REQUEST = "per_request"
+    PER_TOKEN = "per_token"
+    MONTHLY = "monthly"
+    USAGE_BASED = "usage_based"
+    ONE_TIME = "one_time"
+    FREE = "free"

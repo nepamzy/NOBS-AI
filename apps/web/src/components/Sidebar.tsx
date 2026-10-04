@@ -61,19 +61,34 @@ export function Sidebar() {
           </NavLink>
         ))}
         {user?.role === "admin" && (
-          <NavLink
-            to="/admin"
-            onClick={() => setMenuOpen(false)}
-            className={({ isActive }) =>
-              `rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-accent-500/15 text-accent-400"
-                  : "text-white/60 hover:bg-white/5 hover:text-white/90"
-              }`
-            }
-          >
-            Admin
-          </NavLink>
+          <>
+            <NavLink
+              to="/admin"
+              onClick={() => setMenuOpen(false)}
+              className={({ isActive }) =>
+                `rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  isActive
+                    ? "bg-accent-500/15 text-accent-400"
+                    : "text-white/60 hover:bg-white/5 hover:text-white/90"
+                }`
+              }
+            >
+              Admin
+            </NavLink>
+            <NavLink
+              to="/spend"
+              onClick={() => setMenuOpen(false)}
+              className={({ isActive }) =>
+                `rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  isActive
+                    ? "bg-accent-500/15 text-accent-400"
+                    : "text-white/60 hover:bg-white/5 hover:text-white/90"
+                }`
+              }
+            >
+              Spend
+            </NavLink>
+          </>
         )}
 
         <div className="mt-4 flex flex-col gap-2 border-t border-white/10 pt-4 md:mt-auto">

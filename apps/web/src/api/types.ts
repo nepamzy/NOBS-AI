@@ -158,21 +158,44 @@ export type CostCategory =
   | "domain"
   | "other";
 
+export type CostStatus = "active" | "pending" | "stopped";
+
+export type BillingType =
+  | "hourly"
+  | "per_request"
+  | "per_token"
+  | "monthly"
+  | "usage_based"
+  | "one_time"
+  | "free";
+
 export interface CostEntry {
   id: string;
   category: CostCategory;
   service: string;
   purpose: string;
+  status: CostStatus;
+  billing_type: BillingType | null;
   video_id: string | null;
   estimated_cost_usd: number | null;
   actual_cost_usd: number | null;
   occurred_at: string;
 }
 
+export interface CategoryBreakdown {
+  category: CostCategory;
+  estimated_usd: number;
+  actual_usd: number;
+}
+
 export interface SpendSummary {
   entries: CostEntry[];
   total_estimated_usd: number;
   total_actual_usd: number;
+  active_monthly_recurring_usd: number;
+  pending_count: number;
+  active_count: number;
+  by_category: CategoryBreakdown[];
 }
 
 export interface VoicePreset {
