@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api, ApiError, resolveStorageUrl } from "../api/client";
+import { api, ApiError, errorMessage, resolveStorageUrl } from "../api/client";
 import type { Asset, Script, Video } from "../api/types";
 import { LoadingState } from "../components/LoadingState";
 import { PipelineProgress, PipelineStatus, StageBlockedNotice } from "../components/PipelineStatus";
@@ -23,15 +23,25 @@ export function VideoDetail() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [approving, setApproving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     if (!videoId) return;
-    api.getVideo(videoId).then(setVideo);
+    api
+      .getVideo(videoId)
+      .then((v) => {
+        setVideo(v);
+        setLoadError(null);
+      })
+      .catch((err) => setLoadError(errorMessage(err)));
     api
       .getVideoScript(videoId)
       .then(setScript)
       .catch(() => setScript(null));
-    api.listAssets(videoId).then(setAssets);
+    api
+      .listAssets(videoId)
+      .then(setAssets)
+      .catch(() => {});
   }, [videoId]);
 
   useEffect(() => {
@@ -77,7 +87,13 @@ export function VideoDetail() {
     );
   }
 
-  if (!video) return <LoadingState />;
+  if (!video) {
+    return loadError ? (
+      <p className="text-red-400">Couldn't load video: {loadError}</p>
+    ) : (
+      <LoadingState />
+    );
+  }
 
   const locked = video.storyboard_approved;
   const awaitingApproval = video.stage === "storyboard_review" && !locked;

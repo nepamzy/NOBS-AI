@@ -33,6 +33,7 @@ from services.ai.assistant.engine import (
     NOBS_SYSTEM_PROMPT,
     NOBS_TOOLS,
     WEB_SEARCH_TOOL,
+    AssistantUpstreamError,
     GeneratedFile,
     run_chat_turn,
 )
@@ -308,10 +309,10 @@ def send_message(
     conversation = [{"role": m.role, "content": m.content} for m in payload.history]
 
     if payload.attachment is not None:
-        user_content = [
-            _attachment_content_block(payload.attachment),
-            {"type": "text", "text": payload.message},
-        ]
+        user_content = [_attachment_content_block(payload.attachment)]
+        # Attachment-only sends are allowed; an empty text block is not.
+        if payload.message.strip():
+            user_content.append({"type": "text", "text": payload.message})
     else:
         user_content = payload.message
     conversation.append({"role": "user", "content": user_content})
@@ -341,6 +342,12 @@ def send_message(
         )
     except EngineNotConfiguredError as exc:
         raise HTTPException(status_code=402, detail=str(exc)) from exc
+    except AssistantUpstreamError as exc:
+        # A handled 502 keeps the CORS headers, so the page can show why —
+        # an unhandled 500 reaches the browser as a bare "Failed to fetch".
+        raise HTTPException(
+            status_code=502, detail=f"The AI service rejected the request: {exc}"
+        ) from exc
 
     return ChatResponse(
         reply=result.reply,

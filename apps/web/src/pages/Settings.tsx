@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, ApiError } from "../api/client";
+import { api, ApiError, errorMessage } from "../api/client";
 import type { CostCategory, Settings as SettingsData, SpendSummary } from "../api/types";
 import { DurationPicker } from "../components/DurationPicker";
 import { LoadingState } from "../components/LoadingState";
@@ -26,7 +26,10 @@ export function Settings() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    api.getSettings().then(setSettings);
+    api
+      .getSettings()
+      .then(setSettings)
+      .catch((err) => setError(errorMessage(err)));
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -46,7 +49,13 @@ export function Settings() {
     }
   }
 
-  if (!settings) return <LoadingState />;
+  if (!settings) {
+    return error ? (
+      <p className="text-red-400">Couldn't load settings: {error}</p>
+    ) : (
+      <LoadingState />
+    );
+  }
 
   return (
     <div className="max-w-2xl">
@@ -222,7 +231,10 @@ function SpendSection() {
   const [showForm, setShowForm] = useState(false);
 
   function refresh() {
-    api.getSpend().then(setSpend);
+    api
+      .getSpend()
+      .then(setSpend)
+      .catch(() => setSpend(null));
   }
 
   useEffect(refresh, []);

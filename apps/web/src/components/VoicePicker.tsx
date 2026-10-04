@@ -16,7 +16,10 @@ export function VoicePicker({
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    api.listVoices().then(setPresets);
+    api
+      .listVoices()
+      .then(setPresets)
+      .catch(() => setPresets([]));
   }, []);
 
   useEffect(() => {

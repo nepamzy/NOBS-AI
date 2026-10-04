@@ -3,9 +3,11 @@ import { Sidebar } from "./Sidebar";
 
 export function Layout() {
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen flex-col md:flex-row">
       <Sidebar />
-      <main className="flex-1 p-8">
+      {/* min-w-0 lets wide children shrink instead of pushing the page
+          wider than a phone screen. */}
+      <main className="min-w-0 flex-1 p-4 md:p-8">
         <Outlet />
       </main>
     </div>

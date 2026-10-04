@@ -1,6 +1,6 @@
 import pytest
 
-from services.ai.assistant.engine import run_chat_turn
+from services.ai.assistant.engine import AssistantUpstreamError, run_chat_turn
 from services.common.errors import ApprovalRequiredError, CostWarning, EngineNotConfiguredError
 
 
@@ -188,3 +188,61 @@ def test_generated_pdf_is_downloaded_and_returned(monkeypatch):
     assert generated.filename == "report.pdf"
     assert generated.media_type == "application/pdf"
     assert generated.content == b"%PDF-1.4 fake pdf bytes"
+
+
+def test_empty_text_blocks_are_stripped_before_the_call(monkeypatch):
+    # Anthropic 400s the whole request on any empty text block; one can come
+    # back in the model's own reply and then be resent as history.
+    sent = {}
+
+    class _FakeMessages:
+        def create(self, **kwargs):
+            sent["messages"] = list(kwargs["messages"])
+            return _FakeResponse("end_turn", [_FakeBlock("text", text="Fine.")])
+
+    class _FakeClient:
+        def __init__(self, api_key):
+            self.messages = _FakeMessages()
+
+    import anthropic
+
+    monkeypatch.setattr(anthropic, "Anthropic", _FakeClient)
+
+    history = [
+        {"role": "user", "content": "first"},
+        {
+            "role": "assistant",
+            "content": [{"type": "text", "text": ""}, {"type": "text", "text": "reply"}],
+        },
+        {"role": "assistant", "content": [{"type": "text", "text": "  "}]},
+        {"role": "user", "content": ""},
+        {"role": "user", "content": "second"},
+    ]
+    result = run_chat_turn("anthropic", "key", "claude-opus-5", history, lambda n, i: {})
+
+    assert sent["messages"] == [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": [{"type": "text", "text": "reply"}]},
+        {"role": "user", "content": "second"},
+    ]
+    assert result.reply == "Fine."
+
+
+def test_provider_error_becomes_assistant_upstream_error(monkeypatch):
+    import anthropic
+    import httpx2
+
+    class _FakeMessages:
+        def create(self, **kwargs):
+            raise anthropic.APIConnectionError(request=httpx2.Request("POST", "https://x"))
+
+    class _FakeClient:
+        def __init__(self, api_key):
+            self.messages = _FakeMessages()
+
+    monkeypatch.setattr(anthropic, "Anthropic", _FakeClient)
+
+    with pytest.raises(AssistantUpstreamError):
+        run_chat_turn(
+            "anthropic", "key", "claude-opus-5", [{"role": "user", "content": "hi"}], lambda n, i: {}
+        )

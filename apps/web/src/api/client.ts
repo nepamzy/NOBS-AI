@@ -64,6 +64,17 @@ export class ApiError extends Error {
   }
 }
 
+export function errorMessage(err: unknown): string {
+  if (err instanceof ApiError) return err.message;
+  // fetch() rejects with a bare TypeError when the request never got a
+  // readable response: server asleep/unreachable, or a server crash (500s
+  // from the API carry no CORS header, so the browser hides them too).
+  if (err instanceof TypeError) {
+    return "Couldn't reach the server — it may be waking up (try again in a minute) or the request failed on the server.";
+  }
+  return String(err);
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getStoredToken();
   const response = await fetch(`${BASE_URL}${path}`, {
