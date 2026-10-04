@@ -228,6 +228,76 @@ def test_empty_text_blocks_are_stripped_before_the_call(monkeypatch):
     assert result.reply == "Fine."
 
 
+def test_orphaned_server_tool_use_is_stripped_on_max_tokens_truncation(monkeypatch):
+    # code_execution's call and result normally land in the same turn, but
+    # hitting max_tokens mid-call can cut the response off between the two.
+    # Persisting that orphan as history gets the whole next request
+    # rejected by Anthropic — it must be dropped before it's ever stored.
+    class _FakeMessages:
+        def create(self, **kwargs):
+            return _FakeResponse(
+                "max_tokens",
+                [
+                    _FakeBlock("text", text="Let me check that."),
+                    _FakeBlock(
+                        "server_tool_use", id="srvtoolu_01abc", name="code_execution", input={}
+                    ),
+                ],
+            )
+
+    class _FakeClient:
+        def __init__(self, api_key):
+            self.messages = _FakeMessages()
+
+    import anthropic
+
+    monkeypatch.setattr(anthropic, "Anthropic", _FakeClient)
+
+    result = run_chat_turn(
+        "anthropic", "key", "claude-opus-5", [{"role": "user", "content": "hi"}], lambda n, i: {}
+    )
+
+    assistant_message = result.messages[-1]
+    assert assistant_message["role"] == "assistant"
+    assert [b["type"] for b in assistant_message["content"]] == ["text"]
+
+
+def test_paired_server_tool_use_is_kept(monkeypatch):
+    class _FakeMessages:
+        def create(self, **kwargs):
+            return _FakeResponse(
+                "end_turn",
+                [
+                    _FakeBlock(
+                        "server_tool_use", id="srvtoolu_01abc", name="code_execution", input={}
+                    ),
+                    _FakeBlock(
+                        "bash_code_execution_tool_result",
+                        tool_use_id="srvtoolu_01abc",
+                        content={"type": "bash_code_execution_result"},
+                    ),
+                    _FakeBlock("text", text="Done."),
+                ],
+            )
+
+    class _FakeClient:
+        def __init__(self, api_key):
+            self.messages = _FakeMessages()
+
+    import anthropic
+
+    monkeypatch.setattr(anthropic, "Anthropic", _FakeClient)
+
+    result = run_chat_turn(
+        "anthropic", "key", "claude-opus-5", [{"role": "user", "content": "hi"}], lambda n, i: {}
+    )
+
+    assistant_message = result.messages[-1]
+    types = [b["type"] for b in assistant_message["content"]]
+    assert "server_tool_use" in types
+    assert "bash_code_execution_tool_result" in types
+
+
 def test_provider_error_becomes_assistant_upstream_error(monkeypatch):
     import anthropic
     import httpx2

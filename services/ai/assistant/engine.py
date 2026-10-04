@@ -29,7 +29,10 @@ from dataclasses import dataclass, field
 from services.common.errors import ApprovalRequiredError, EngineNotConfiguredError
 
 _MAX_TOOL_ROUNDS = 6  # safety cap against a runaway tool-call loop
-_MAX_OUTPUT_TOKENS = 2048
+# code_execution can legitimately need code + its output + an explanation
+# in one turn — 2048 was tight enough to truncate mid-call often enough to
+# matter (see _strip_orphaned_server_tool_use below).
+_MAX_OUTPUT_TOKENS = 4096
 
 NOBS_SYSTEM_PROMPT = (
     "You are the NOBS AI assistant. You help the signed-in user create and "
@@ -481,6 +484,25 @@ def _drop_empty_text(messages: list[dict]) -> list[dict]:
     return cleaned
 
 
+def _strip_orphaned_server_tool_use(content_blocks: list[dict]) -> list[dict]:
+    """A server tool's call and result (code_execution, web_search) normally
+    land together in one turn — but hitting max_tokens mid-call can cut the
+    response off between the two, leaving a server_tool_use block with no
+    matching result. Resending that orphan as history is rejected outright
+    by the API ("tool use ... found without a corresponding ... result
+    block"), so drop it before it's ever persisted."""
+    paired_ids = {
+        block.get("tool_use_id")
+        for block in content_blocks
+        if str(block.get("type", "")).endswith("_tool_result")
+    }
+    return [
+        block
+        for block in content_blocks
+        if not (block.get("type") == "server_tool_use" and block.get("id") not in paired_ids)
+    ]
+
+
 def run_chat_turn(
     llm_provider: str,
     llm_api_key: str,
@@ -521,7 +543,9 @@ def run_chat_turn(
             )
         except anthropic.APIError as exc:
             raise AssistantUpstreamError(getattr(exc, "message", None) or str(exc)) from exc
-        content_blocks = [block.model_dump() for block in response.content]
+        content_blocks = _strip_orphaned_server_tool_use(
+            [block.model_dump() for block in response.content]
+        )
         messages.append({"role": "assistant", "content": content_blocks})
         generated_files.extend(_extract_generated_files(client, response))
 
