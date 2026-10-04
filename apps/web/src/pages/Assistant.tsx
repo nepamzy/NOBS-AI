@@ -1,8 +1,33 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, errorMessage, resolveStorageUrl } from "../api/client";
 import type { ChatAttachment, ChatMessage, GeneratedFile } from "../api/types";
 import { MicButton } from "../components/MicButton";
 import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis";
+
+// Chat history otherwise lives only in this component's React state —
+// nothing wipes it on purpose, but some browsers (especially mobile)
+// silently discard and reload a backgrounded tab under memory pressure,
+// which resets all in-memory state including this. Persisting it here
+// means switching away and back actually survives that.
+const HISTORY_STORAGE_KEY = "nobs_ai_assistant_history";
+
+function loadStoredHistory(): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredHistory(history: ChatMessage[]) {
+  try {
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
+  } catch {
+    // Private browsing, storage disabled/full, etc. — chat still works,
+    // it just won't survive a reload this time.
+  }
+}
 
 // `content` is either a plain string (what the user typed) or a list of
 // Anthropic content blocks (assistant replies, tool_result messages this
@@ -41,7 +66,7 @@ function readFileAsAttachment(file: File): Promise<ChatAttachment> {
 }
 
 export function Assistant() {
-  const [history, setHistory] = useState<ChatMessage[]>([]);
+  const [history, setHistory] = useState<ChatMessage[]>(loadStoredHistory);
   const [input, setInput] = useState("");
   const [attachment, setAttachment] = useState<ChatAttachment | null>(null);
   const [sending, setSending] = useState(false);
@@ -50,6 +75,16 @@ export function Assistant() {
   const [voiceMode, setVoiceMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { isSupported: ttsSupported, isSpeaking, speak, stop: stopSpeaking } = useSpeechSynthesis();
+
+  useEffect(() => {
+    saveStoredHistory(history);
+  }, [history]);
+
+  function startNewConversation() {
+    setHistory([]);
+    setLatestFiles([]);
+    setError(null);
+  }
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -122,28 +157,41 @@ export function Assistant() {
             PDF you attach.
           </p>
         </div>
-        {ttsSupported && (
-          <button
-            type="button"
-            onClick={() => {
-              if (voiceMode) stopSpeaking();
-              setVoiceMode((v) => !v);
-            }}
-            title={
-              voiceMode
-                ? "Voice mode on — replies are read aloud, dictation auto-sends"
-                : "Turn on voice mode: talk and it answers out loud, like a call"
-            }
-            aria-pressed={voiceMode}
-            className={`shrink-0 rounded-md border px-3 py-2 text-sm transition-colors ${
-              voiceMode
-                ? "border-accent-500/40 bg-accent-500/20 text-accent-300"
-                : "border-white/10 bg-white/5 text-white/60 hover:text-white"
-            }`}
-          >
-            {isSpeaking ? "🔊 Speaking…" : voiceMode ? "🔊 Voice mode" : "🔈 Voice mode"}
-          </button>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {history.length > 0 && (
+            <button
+              type="button"
+              onClick={startNewConversation}
+              disabled={sending}
+              title="Clear this conversation and start a new one"
+              className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/60 hover:text-white disabled:opacity-40"
+            >
+              New chat
+            </button>
+          )}
+          {ttsSupported && (
+            <button
+              type="button"
+              onClick={() => {
+                if (voiceMode) stopSpeaking();
+                setVoiceMode((v) => !v);
+              }}
+              title={
+                voiceMode
+                  ? "Voice mode on — replies are read aloud, dictation auto-sends"
+                  : "Turn on voice mode: talk and it answers out loud, like a call"
+              }
+              aria-pressed={voiceMode}
+              className={`rounded-md border px-3 py-2 text-sm transition-colors ${
+                voiceMode
+                  ? "border-accent-500/40 bg-accent-500/20 text-accent-300"
+                  : "border-white/10 bg-white/5 text-white/60 hover:text-white"
+              }`}
+            >
+              {isSpeaking ? "🔊 Speaking…" : voiceMode ? "🔊 Voice mode" : "🔈 Voice mode"}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="mt-6 flex-1 space-y-4 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-4">
