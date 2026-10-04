@@ -15,7 +15,12 @@
 }
 
 :root {
-  color-scheme: light dark;
+  /* This app is dark-only everywhere — no light theme exists. Declaring
+     "light dark" here invited browsers on a light-mode device to render
+     native form control chrome (input backgrounds especially) in light
+     mode, clashing with the app's own dark CSS and making input text
+     render white-on-white until focus cleared the browser's override. */
+  color-scheme: dark;
 }
 
 body {
