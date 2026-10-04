@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, ApiError } from "../api/client";
+import { api, errorMessage } from "../api/client";
 import type { UploadSchedule } from "../api/types";
 import { DurationPicker } from "./DurationPicker";
 
@@ -21,7 +21,20 @@ export function UploadSchedules({ projectId }: { projectId: string }) {
     api
       .listSchedules()
       .then((all) => setSchedules(all.filter((s) => s.project_id === projectId)))
+      .catch((err) => setError(errorMessage(err)))
       .finally(() => setLoading(false));
+  }
+
+  // Wraps the row actions so a failed request shows inline instead of
+  // becoming an uncaught promise rejection with no feedback.
+  async function runAction(action: () => Promise<unknown>) {
+    setError(null);
+    try {
+      await action();
+      refresh();
+    } catch (err) {
+      setError(errorMessage(err));
+    }
   }
 
   useEffect(refresh, [projectId]);
@@ -43,15 +56,14 @@ export function UploadSchedules({ projectId }: { projectId: string }) {
       setShowForm(false);
       refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
+      setError(errorMessage(err));
     } finally {
       setCreating(false);
     }
   }
 
-  async function toggleEnabled(schedule: UploadSchedule) {
-    await api.updateSchedule(schedule.id, { enabled: !schedule.enabled });
-    refresh();
+  function toggleEnabled(schedule: UploadSchedule) {
+    return runAction(() => api.updateSchedule(schedule.id, { enabled: !schedule.enabled }));
   }
 
   async function toggleAutomation(schedule: UploadSchedule) {
@@ -66,13 +78,13 @@ export function UploadSchedules({ projectId }: { projectId: string }) {
       );
       if (!confirmed) return;
     }
-    await api.updateSchedule(schedule.id, { auto_publish: !schedule.auto_publish });
-    refresh();
+    await runAction(() =>
+      api.updateSchedule(schedule.id, { auto_publish: !schedule.auto_publish }),
+    );
   }
 
-  async function handleDelete(id: string) {
-    await api.deleteSchedule(id);
-    refresh();
+  function handleDelete(id: string) {
+    return runAction(() => api.deleteSchedule(id));
   }
 
   if (loading) return null;
@@ -94,6 +106,8 @@ export function UploadSchedules({ projectId }: { projectId: string }) {
         Starts generating automatically at the chosen time. Still stops for your storyboard
         review unless you activate automation below.
       </p>
+
+      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
 
       {showForm && (
         <form
@@ -133,8 +147,6 @@ export function UploadSchedules({ projectId }: { projectId: string }) {
             minutes={form.minutes}
             onChange={(minutes) => setForm({ ...form, minutes })}
           />
-
-          {error && <p className="text-sm text-red-400">{error}</p>}
 
           <button
             type="submit"

@@ -7,7 +7,11 @@ export function ProjectFeedback({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    api.listProjectFeedback(projectId).then(setFeedback);
+    // Optional section — on failure it just stays hidden, like when empty.
+    api
+      .listProjectFeedback(projectId)
+      .then(setFeedback)
+      .catch(() => setFeedback([]));
   }, [projectId]);
 
   if (feedback.length === 0) return null;

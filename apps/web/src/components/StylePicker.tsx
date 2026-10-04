@@ -14,7 +14,10 @@ export function StylePicker({
   const [presets, setPresets] = useState<StylePreset[]>([]);
 
   useEffect(() => {
-    api.listStyles().then(setPresets);
+    api
+      .listStyles()
+      .then(setPresets)
+      .catch(() => setPresets([]));
   }, []);
 
   return (
