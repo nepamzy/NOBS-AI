@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { api, ApiError, resolveStorageUrl } from "../api/client";
+import { api, errorMessage, resolveStorageUrl } from "../api/client";
 import type { ChatAttachment, ChatMessage, GeneratedFile } from "../api/types";
 import { MicButton } from "../components/MicButton";
 import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis";
@@ -94,7 +94,12 @@ export function Assistant() {
         if (replyText) speak(replyText);
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
+      setError(errorMessage(err));
+      // Roll back the optimistic turn and give the text back to retry —
+      // left in place it would be resent as history on the next message.
+      setHistory((prev) => prev.slice(0, -1));
+      setInput(message);
+      setAttachment(sentAttachment);
     } finally {
       setSending(false);
     }
@@ -106,7 +111,8 @@ export function Assistant() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] max-w-2xl flex-col">
+    // Height leaves room for main's padding, plus the mobile top bar below md.
+    <div className="flex h-[calc(100dvh-7rem)] max-w-2xl flex-col md:h-[calc(100dvh-4rem)]">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="font-heading text-2xl font-semibold text-white">Assistant</h1>

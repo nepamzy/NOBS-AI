@@ -451,6 +451,36 @@ def _extract_generated_files(client, response) -> list[GeneratedFile]:
     return files
 
 
+class AssistantUpstreamError(RuntimeError):
+    """The LLM provider rejected or failed the request (bad request, auth,
+    overload). Raised instead of letting the SDK exception escape as a 500."""
+
+
+def _drop_empty_text(messages: list[dict]) -> list[dict]:
+    """Anthropic rejects the whole request if any text block is empty
+    ("text content blocks must be non-empty"). Empty ones can come back in
+    the model's own replies (e.g. alongside a tool call) and then get sent
+    again as history, so strip them before every call. A message left with
+    no content is dropped; the API merges the consecutive same-role turns
+    that can leave behind."""
+    cleaned = []
+    for message in messages:
+        content = message["content"]
+        if isinstance(content, str):
+            if not content.strip():
+                continue
+        else:
+            content = [
+                block
+                for block in content
+                if not (block.get("type") == "text" and not str(block.get("text") or "").strip())
+            ]
+            if not content:
+                continue
+        cleaned.append({**message, "content": content})
+    return cleaned
+
+
 def run_chat_turn(
     llm_provider: str,
     llm_api_key: str,
@@ -480,20 +510,26 @@ def run_chat_turn(
     generated_files: list[GeneratedFile] = []
 
     for _ in range(_MAX_TOOL_ROUNDS):
-        response = client.messages.create(
-            model=llm_model,
-            max_tokens=_MAX_OUTPUT_TOKENS,
-            system=system_prompt,
-            tools=tools,
-            messages=messages,
-        )
+        messages = _drop_empty_text(messages)
+        try:
+            response = client.messages.create(
+                model=llm_model,
+                max_tokens=_MAX_OUTPUT_TOKENS,
+                system=system_prompt,
+                tools=tools,
+                messages=messages,
+            )
+        except anthropic.APIError as exc:
+            raise AssistantUpstreamError(getattr(exc, "message", None) or str(exc)) from exc
         content_blocks = [block.model_dump() for block in response.content]
         messages.append({"role": "assistant", "content": content_blocks})
         generated_files.extend(_extract_generated_files(client, response))
 
         if response.stop_reason != "tool_use":
             reply = "".join(b["text"] for b in content_blocks if b["type"] == "text")
-            return ChatTurnResult(reply=reply, messages=messages, generated_files=generated_files)
+            return ChatTurnResult(
+                reply=reply, messages=_drop_empty_text(messages), generated_files=generated_files
+            )
 
         tool_results = []
         for block in response.content:
