@@ -13,6 +13,7 @@ import { Settings } from "./pages/Settings";
 import { Signup } from "./pages/Signup";
 import { SpendDashboard } from "./pages/SpendDashboard";
 import { VideoDetail } from "./pages/VideoDetail";
+import { VideoLibrary } from "./pages/VideoLibrary";
 
 export function App() {
   return (
@@ -27,6 +28,7 @@ export function App() {
           <Route path="assistant" element={<Assistant />} />
           <Route path="projects" element={<Projects />} />
           <Route path="projects/:projectId" element={<ProjectDetail />} />
+          <Route path="library" element={<VideoLibrary />} />
           <Route path="videos/:videoId" element={<VideoDetail />} />
           <Route path="settings" element={<Settings />} />
           <Route element={<RequireAdmin />}>

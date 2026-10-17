@@ -6,9 +6,10 @@ import { Logo } from "./Logo";
 const links = [
   { to: "/", label: "Dashboard", end: true },
   { to: "/create", label: "Create" },
+  { to: "/projects", label: "Projects" },
+  { to: "/library", label: "Video Library" },
   { to: "/clips", label: "Clips" },
   { to: "/assistant", label: "Assistant" },
-  { to: "/projects", label: "Projects" },
   { to: "/settings", label: "Settings" },
 ];
 
@@ -36,13 +37,18 @@ export function Sidebar() {
         <button
           onClick={() => setMenuOpen((v) => !v)}
           aria-expanded={menuOpen}
+          aria-controls="sidebar-nav-links"
+          aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
           className="rounded-md border border-white/10 px-3 py-1.5 text-sm font-medium text-white/70 md:hidden"
         >
           {menuOpen ? "Close" : "Menu"}
         </button>
       </div>
 
-      <div className={`${menuOpen ? "flex" : "hidden"} mt-3 flex-1 flex-col gap-1 md:mt-0 md:flex`}>
+      <div
+        id="sidebar-nav-links"
+        className={`${menuOpen ? "flex" : "hidden"} mt-3 flex-1 flex-col gap-1 md:mt-0 md:flex`}
+      >
         {links.map((link) => (
           <NavLink
             key={link.to}

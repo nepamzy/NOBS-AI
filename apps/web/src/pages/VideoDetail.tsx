@@ -52,6 +52,11 @@ export function VideoDetail() {
 
   async function handleApprove() {
     if (!videoId) return;
+    const confirmed = window.confirm(
+      "Approve this storyboard? This kicks off voice and video generation for every scene — " +
+        "the first step that can actually cost money or GPU time. Review the scenes above first.",
+    );
+    if (!confirmed) return;
     setApproving(true);
     setError(null);
     try {

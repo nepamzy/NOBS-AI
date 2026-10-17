@@ -5,6 +5,7 @@ import type { Project, Video } from "../api/types";
 import { LoadingState } from "../components/LoadingState";
 import { PipelineStatus } from "../components/PipelineStatus";
 import { ProjectFeedback } from "../components/ProjectFeedback";
+import { ErrorState, Panel } from "../components/ui";
 import { UploadSchedules } from "../components/UploadSchedules";
 
 export function ProjectDetail() {
@@ -26,7 +27,8 @@ export function ProjectDetail() {
       .catch((err) => setVideosError(errorMessage(err)));
   }, [projectId]);
 
-  if (projectError) return <p className="text-red-400">Couldn't load project: {projectError}</p>;
+  if (projectError)
+    return <ErrorState message={`Couldn't load project: ${projectError}`} />;
   if (!project) return <LoadingState />;
 
   return (
@@ -38,18 +40,19 @@ export function ProjectDetail() {
       <ul className="mt-6 flex flex-col gap-3">
         {videos.map((video) => (
           <li key={video.id}>
-            <Link
-              to={`/videos/${video.id}`}
-              className="block rounded-md border border-white/10 bg-white/5 p-4 hover:bg-white/10"
-            >
-              <p className="text-white">{video.topic}</p>
-              <div className="mt-2">
-                <PipelineStatus stage={video.stage} />
-              </div>
+            <Link to={`/videos/${video.id}`}>
+              <Panel className="hover:border-white/20">
+                <p className="text-white">{video.topic}</p>
+                <div className="mt-2">
+                  <PipelineStatus stage={video.stage} />
+                </div>
+              </Panel>
             </Link>
           </li>
         ))}
-        {videosError && <p className="text-sm text-red-400">Couldn't load videos: {videosError}</p>}
+        {videosError && (
+          <ErrorState message={`Couldn't load videos: ${videosError}`} />
+        )}
         {!videosError && videos.length === 0 && (
           <p className="text-white/50">No videos in this project yet.</p>
         )}

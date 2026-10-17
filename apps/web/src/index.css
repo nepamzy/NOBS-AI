@@ -9,9 +9,17 @@
      approve/spend stays emerald (a deliberate "money gate" signal), cost
      warnings stay amber, errors stay red. See CLAUDE.md-adjacent README
      note on the palette if this ever needs to change. */
+  --color-accent-300: #9b5cff;
   --color-accent-400: #a78bfa;
   --color-accent-500: #8b5cf6;
   --color-accent-600: #7c3aed;
+
+  /* Shared app-shell surfaces — the NOBS AI Frontend Blueprint's two base
+     tones: a near-black canvas behind everything, and a slightly lighter
+     flat panel surface for cards/sections on top of it. */
+  --color-canvas: #090d1b;
+  --color-panel: #11172b;
+  --color-panel-border: #ffffff1a;
 }
 
 :root {
@@ -25,7 +33,7 @@
 
 body {
   margin: 0;
-  background: #0b0d10;
+  background: var(--color-canvas);
   color: #e6e8eb;
   font-family:
     ui-sans-serif,
@@ -39,4 +47,27 @@ body {
 ::selection {
   background: var(--color-accent-500);
   color: white;
+}
+
+/* Consistent keyboard-focus ring everywhere — only for actual keyboard
+   navigation (not every mouse click), so a sighted mouse user doesn't get
+   rings on every click, but a keyboard user and screen-reader user can
+   always see where focus is. */
+:focus-visible {
+  outline: 2px solid var(--color-accent-400);
+  outline-offset: 2px;
+}
+
+/* Respect the OS-level reduced-motion preference — spinners, hover
+   transitions and the pipeline progress bar's animated width all honor
+   this instead of forcing motion on people who've asked for less of it. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
