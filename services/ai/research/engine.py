@@ -16,13 +16,46 @@ points to check, not as confirmed citations, until a web-search-backed
 version replaces this.
 """
 
+import json
 from dataclasses import dataclass, field
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from services.common.errors import ApprovalRequiredError, CostWarning, EngineNotConfiguredError
 
-_MAX_OUTPUT_TOKENS = 4096
+# Research is a structured reply with several lists plus source excerpts; 4096
+# tokens was too tight and a cut-off reply is invalid JSON. Give it room and
+# retry once with an explicit reason instead of failing on the first miss.
+_MAX_OUTPUT_TOKENS = 8192
+_MAX_ATTEMPTS = 2
+
+
+class ResearchOutputError(RuntimeError):
+    """The model replied, but not with usable research. Raised so the stage
+    fails with the reason shown on the video page, not a silent crash."""
+
+
+def _prompt(topic: str) -> str:
+    return (
+        f"Research this YouTube video topic: {topic!r}. Cover key facts, relevant "
+        "statistics, interesting findings, counterarguments or nuance worth "
+        "acknowledging, and story angle opportunities. For sources, name real "
+        "references you're aware of (they are not fetched live; flag anything "
+        "you're unsure is still accurate).\n\n"
+        "Reply with ONLY one JSON object, no text before or after it, with keys: "
+        "key_facts, statistics, interesting_findings, counterarguments, "
+        "story_opportunities (each a list of strings), and sources (a list of "
+        "objects with url, title, excerpt)."
+    )
+
+
+def _parse_json_object(text: str) -> dict:
+    """Tolerates a code fence or a sentence around the JSON object."""
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end <= start:
+        raise ValueError("no JSON object in the reply")
+    return json.loads(text[start : end + 1])
 
 
 @dataclass
@@ -82,32 +115,34 @@ class ResearchEngine:
         import anthropic
 
         client = anthropic.Anthropic(api_key=self._llm_api_key)
-        response = client.messages.parse(
-            model=self._llm_model,
-            max_tokens=_MAX_OUTPUT_TOKENS,
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        f"Research this YouTube video topic: {topic!r}. Provide "
-                        "key facts, relevant statistics, interesting findings, "
-                        "counterarguments/nuance worth acknowledging, and "
-                        "story angle opportunities. For sources, name real "
-                        "references you're aware of (they are not fetched "
-                        "live — flag anything you're unsure is still "
-                        "accurate)."
-                    ),
-                }
-            ],
-            output_format=_ResearchResultModel,
-        )
-        parsed = response.parsed_output
-        return ResearchResult(
-            topic=topic,
-            key_facts=parsed.key_facts,
-            statistics=parsed.statistics,
-            interesting_findings=parsed.interesting_findings,
-            counterarguments=parsed.counterarguments,
-            story_opportunities=parsed.story_opportunities,
-            sources=[s.model_dump() for s in parsed.sources],
-        )
+        problem = ""
+        for _ in range(_MAX_ATTEMPTS):
+            message = client.messages.create(
+                model=self._llm_model,
+                max_tokens=_MAX_OUTPUT_TOKENS,
+                messages=[{"role": "user", "content": _prompt(topic)}],
+            )
+            text = "".join(
+                block.text for block in message.content if getattr(block, "type", "") == "text"
+            )
+            if message.stop_reason == "max_tokens":
+                problem = f"reply was cut off at {_MAX_OUTPUT_TOKENS} tokens"
+                continue
+            try:
+                parsed = _ResearchResultModel.model_validate(_parse_json_object(text))
+            except (ValueError, ValidationError) as exc:
+                problem = (
+                    f"reply was not the expected research JSON ({type(exc).__name__}); "
+                    f"it starts with: {text[:160]!r}"
+                )
+                continue
+            return ResearchResult(
+                topic=topic,
+                key_facts=parsed.key_facts,
+                statistics=parsed.statistics,
+                interesting_findings=parsed.interesting_findings,
+                counterarguments=parsed.counterarguments,
+                story_opportunities=parsed.story_opportunities,
+                sources=[s.model_dump() for s in parsed.sources],
+            )
+        raise ResearchOutputError(f"Research failed after {_MAX_ATTEMPTS} attempts: {problem}")

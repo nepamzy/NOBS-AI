@@ -195,6 +195,11 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
             previous_titles=previous_titles,
         )
 
+        # Replace, don't append: a re-run after a block would otherwise stack
+        # duplicate reports for the same script.
+        db.query(ComplianceReport).filter(ComplianceReport.video_id == video.id).delete(
+            synchronize_session=False
+        )
         db.add(
             ComplianceReport(
                 video_id=video.id,
