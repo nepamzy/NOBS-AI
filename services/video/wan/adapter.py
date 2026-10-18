@@ -103,7 +103,7 @@ class WanEngine(VideoEngine):
         output = payload["output"]
         if "error" in output:
             raise RuntimeError(f"Wan worker error for job {job_id}: {output['error']}")
-        # The worker returns the MP4 inline as base64 (runpod_wan_worker/handler.py),
+        # The worker returns the MP4 inline as base64 (handler.py),
         # so no storage keys are needed on the Runpod side.
         with open(output_path, "wb") as f:
             f.write(base64.b64decode(output["clip_base64"]))

@@ -8,7 +8,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-COPY runpod_wan_worker/requirements.txt /app/requirements.txt
+COPY requirements-wan-worker.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Bake the model weights into the image so cold starts don't download ~5GB.
@@ -18,6 +18,6 @@ m='Wan-AI/Wan2.1-T2V-1.3B-Diffusers'; \
 AutoencoderKLWan.from_pretrained(m, subfolder='vae', torch_dtype=torch.float32); \
 WanPipeline.from_pretrained(m, torch_dtype=torch.bfloat16)"
 
-COPY runpod_wan_worker/handler.py /app/handler.py
+COPY handler.py /app/handler.py
 
 CMD ["python", "-u", "/app/handler.py"]

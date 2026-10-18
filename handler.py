@@ -1,7 +1,7 @@
 """Runpod Serverless worker for Wan 2.1 text-to-video (1.3B).
 
 Deployed from this repo on Runpod (Serverless -> New Endpoint -> GitHub repo,
-Dockerfile in runpod_wan_worker/). Contract, matching services/video/wan/adapter.py:
+Dockerfile in repo root). Contract, matching services/video/wan/adapter.py:
 
     input:  {"prompt": str, "duration_seconds": int}
     output: {"clip_base64": str, "duration_seconds": float, "width": int, "height": int}
