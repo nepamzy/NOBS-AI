@@ -1,0 +1,8 @@
+runpod==1.7.7
+diffusers==0.33.1
+transformers==4.49.0
+accelerate==1.4.0
+ftfy==6.3.1
+imageio==2.37.0
+imageio-ffmpeg==0.6.0
+sentencepiece==0.2.0

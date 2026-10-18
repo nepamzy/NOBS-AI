@@ -1,3 +1,4 @@
+import base64
 import pytest
 
 from services.common.errors import ApprovalRequiredError
@@ -33,7 +34,7 @@ def test_submits_polls_and_downloads_the_finished_clip(tmp_path, monkeypatch):
         def json(self):
             return {
                 "status": self._status,
-                "output": {"clip_url": "https://cdn.example/clip.mp4", "duration_seconds": 8.0},
+                "output": {"clip_base64": base64.b64encode(b"fake clip bytes").decode(), "duration_seconds": 8.0},
             }
 
     class _FakeClipDownload:
@@ -49,8 +50,6 @@ def test_submits_polls_and_downloads_the_finished_clip(tmp_path, monkeypatch):
         return _FakeSubmitResponse()
 
     def fake_get(url, headers=None, timeout=None):
-        if url == "https://cdn.example/clip.mp4":
-            return _FakeClipDownload()
         gets.append(url)
         return _FakeStatusResponse(next(status_sequence))
 

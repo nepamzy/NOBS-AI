@@ -20,6 +20,7 @@ not a verified contract. Confirm/adjust against the specific template's
 documented input schema before the first real run.
 """
 
+import base64
 import time
 
 import httpx
@@ -100,11 +101,12 @@ class WanEngine(VideoEngine):
             raise RuntimeError(f"Runpod job {job_id} ended with status '{status}': {payload}")
 
         output = payload["output"]
-        clip_url = output["clip_url"]
-        clip_response = httpx.get(clip_url, timeout=_SUBMIT_TIMEOUT_SECONDS)
-        clip_response.raise_for_status()
+        if "error" in output:
+            raise RuntimeError(f"Wan worker error for job {job_id}: {output['error']}")
+        # The worker returns the MP4 inline as base64 (runpod_wan_worker/handler.py),
+        # so no storage keys are needed on the Runpod side.
         with open(output_path, "wb") as f:
-            f.write(clip_response.content)
+            f.write(base64.b64decode(output["clip_base64"]))
 
         return SceneClipResult(
             clip_path=output_path,
