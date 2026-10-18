@@ -8,6 +8,7 @@ import type {
   ChatResponse,
   Clip,
   ConnectionsStatus,
+  ConnectionTestResult,
   CostCategory,
   CostEntry,
   CostStatus,
