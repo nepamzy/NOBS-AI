@@ -12,8 +12,11 @@ the video (stage_detail) and the stage does NOT advance — the pipeline
 parks itself rather than retrying a paid call on its own.
 """
 
+import logging
+import time
 from dataclasses import dataclass, field
 
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from services.ai.research.engine import ResearchEngine
@@ -61,6 +64,36 @@ def _block(video, db: Session, stage: str, reason: str) -> None:
     raise PipelineBlocked(stage, reason)
 
 
+logger = logging.getLogger(__name__)
+_SAVE_ATTEMPTS = 3
+
+
+def _save_paid_result(db: Session, apply) -> None:
+    """Write the result of a paid call (LLM, voice, GPU clip).
+
+    The paid call is NEVER repeated here. `apply` rebuilds the same writes
+    from the result already held in memory. If the database connection dropped
+    (Supabase closes connections that sit idle, and a long call leaves one
+    idle), roll back, let SQLAlchemy open a fresh connection, and apply again.
+    """
+    for attempt in range(1, _SAVE_ATTEMPTS + 1):
+        try:
+            apply()
+            db.commit()
+            return
+        except OperationalError:
+            db.rollback()
+            if attempt == _SAVE_ATTEMPTS:
+                raise
+            logger.warning(
+                "Database connection dropped while saving a paid result "
+                "(attempt %d of %d); reconnecting and saving again",
+                attempt,
+                _SAVE_ATTEMPTS,
+            )
+            time.sleep(2 * attempt)
+
+
 def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bool) -> None:
     # local imports: avoid an apps/api <-> services import cycle
     from app.models.asset import Asset
@@ -87,19 +120,22 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
         except ApprovalRequiredError as exc:
             _block(video, db, "research", exc.cost_warning.render())
 
-        research = Research(
-            video_id=video.id,
-            topic=result.topic,
-            key_facts=result.key_facts,
-            statistics=result.statistics,
-            interesting_findings=result.interesting_findings,
-            counterarguments=result.counterarguments,
-            story_opportunities=result.story_opportunities,
-        )
-        db.add(research)
-        video.stage = PipelineStage.SCRIPT
-        video.stage_detail = ""
-        db.commit()
+        def _apply_research():
+            db.add(
+                Research(
+                    video_id=video.id,
+                    topic=result.topic,
+                    key_facts=result.key_facts,
+                    statistics=result.statistics,
+                    interesting_findings=result.interesting_findings,
+                    counterarguments=result.counterarguments,
+                    story_opportunities=result.story_opportunities,
+                )
+            )
+            video.stage = PipelineStage.SCRIPT
+            video.stage_detail = ""
+
+        _save_paid_result(db, _apply_research)
         return
 
     if stage == PipelineStage.SCRIPT:
@@ -141,28 +177,30 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
         except ApprovalRequiredError as exc:
             _block(video, db, "script", exc.cost_warning.render())
 
-        script = Script(
-            video_id=video.id,
-            title=draft.title,
-            hook=draft.hook,
-            estimated_duration_seconds=draft.estimated_duration_seconds,
-            word_count=draft.word_count,
-        )
-        script.scenes = [
-            Scene(
-                order=s.order,
-                narration=s.narration,
-                visual_prompt=s.visual_prompt,
-                duration_seconds=s.duration_seconds,
-                transition=s.transition,
+        def _apply_script():
+            script = Script(
+                video_id=video.id,
+                title=draft.title,
+                hook=draft.hook,
+                estimated_duration_seconds=draft.estimated_duration_seconds,
+                word_count=draft.word_count,
             )
-            for s in draft.scenes
-        ]
-        db.add(script)
-        video.stage = PipelineStage.STORYBOARD_REVIEW
-        video.stage_detail = "Awaiting storyboard approval"
-        video.stage_progress_percent = 0
-        db.commit()
+            script.scenes = [
+                Scene(
+                    order=s.order,
+                    narration=s.narration,
+                    visual_prompt=s.visual_prompt,
+                    duration_seconds=s.duration_seconds,
+                    transition=s.transition,
+                )
+                for s in draft.scenes
+            ]
+            db.add(script)
+            video.stage = PipelineStage.STORYBOARD_REVIEW
+            video.stage_detail = "Awaiting storyboard approval"
+            video.stage_progress_percent = 0
+
+        _save_paid_result(db, _apply_script)
         return
 
     if stage == PipelineStage.STORYBOARD_REVIEW:
@@ -259,24 +297,26 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
                     f"(blocked on scene {scene.order}):\n{exc.cost_warning.render()}",
                 )
 
-            db.add(
-                Voiceover(
-                    video_id=video.id,
-                    scene_id=scene.id,
-                    provider=type(ctx.voice_engine).__name__,
-                    audio_path=result.audio_path,
-                    duration_seconds=result.duration_seconds,
-                    word_timestamps=result.word_timestamps,
+            def _apply_voiceover(scene=scene, result=result):
+                db.add(
+                    Voiceover(
+                        video_id=video.id,
+                        scene_id=scene.id,
+                        provider=type(ctx.voice_engine).__name__,
+                        audio_path=result.audio_path,
+                        duration_seconds=result.duration_seconds,
+                        word_timestamps=result.word_timestamps,
+                    )
                 )
-            )
-            # The measured narration length is ground truth for how long this
-            # scene's clip needs to be — the script engine's duration was only
-            # ever an estimate. Video generation below targets this, not the
-            # guess, which is what keeps the two from drifting apart.
-            scene.duration_seconds = round(result.duration_seconds)
+                # The measured narration length is ground truth for how long this
+                # scene's clip needs to be — the script engine's duration was only
+                # ever an estimate. Video generation below targets this, not the
+                # guess, which is what keeps the two from drifting apart.
+                scene.duration_seconds = round(result.duration_seconds)
+                video.stage_progress_percent = int((len(done) + 1) / len(scenes) * 100)
+
+            _save_paid_result(db, _apply_voiceover)
             done.add(scene.id)
-            video.stage_progress_percent = int(len(done) / len(scenes) * 100)
-            db.commit()
 
         video.stage = PipelineStage.VIDEO_GENERATION
         video.stage_detail = ""
@@ -319,19 +359,21 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
                     f"(blocked on scene {scene.order}):\n{exc.cost_warning.render()}",
                 )
 
-            db.add(
-                VideoClip(
-                    video_id=video.id,
-                    scene_id=scene.id,
-                    provider=type(ctx.video_engine).__name__,
-                    status=JobStatus.SUCCEEDED,
-                    clip_path=result.clip_path,
-                    duration_seconds=result.duration_seconds,
+            def _apply_clip(scene=scene, result=result):
+                db.add(
+                    VideoClip(
+                        video_id=video.id,
+                        scene_id=scene.id,
+                        provider=type(ctx.video_engine).__name__,
+                        status=JobStatus.SUCCEEDED,
+                        clip_path=result.clip_path,
+                        duration_seconds=result.duration_seconds,
+                    )
                 )
-            )
+                video.stage_progress_percent = int((len(done) + 1) / len(scenes) * 100)
+
+            _save_paid_result(db, _apply_clip)
             done.add(scene.id)
-            video.stage_progress_percent = int(len(done) / len(scenes) * 100)
-            db.commit()
 
         video.stage = PipelineStage.ASSEMBLY
         video.stage_detail = ""
