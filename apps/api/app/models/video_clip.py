@@ -29,6 +29,9 @@ class VideoClip(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     clip_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Runpod job id, saved the moment a clip is submitted, so a lost job can be
+    # resumed or recovered instead of paying for the same clip twice.
+    provider_job_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     video: Mapped["Video"] = relationship(back_populates="video_clips")
     scene: Mapped["Scene"] = relationship(back_populates="video_clips")

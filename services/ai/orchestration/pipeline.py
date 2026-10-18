@@ -23,7 +23,7 @@ from services.ai.research.engine import ResearchEngine
 from services.ai.script.engine import ScriptEngine
 from services.common.errors import ApprovalRequiredError
 from services.storage.backend import LocalStorageBackend, StorageBackend
-from services.video.engine import SceneClipRequest, VideoEngine
+from services.video.engine import ClipJobLost, SceneClipRequest, VideoEngine
 from services.voice.engine import VoiceEngine
 
 
@@ -347,9 +347,45 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
                 visual_prompt=scene.visual_prompt,
                 duration_seconds=scene.duration_seconds,
             )
+            # A clip submitted by an earlier run is already on Runpod (paid for).
+            # Resume that job instead of submitting it again.
+            pending = (
+                db.query(VideoClip)
+                .filter(
+                    VideoClip.video_id == video.id,
+                    VideoClip.scene_id == scene.id,
+                    VideoClip.status == JobStatus.QUEUED,
+                    VideoClip.provider_job_id.isnot(None),
+                )
+                .order_by(VideoClip.created_at.desc())
+                .first()
+            )
+            resume_job_id = pending.provider_job_id if pending is not None else None
             db.commit()  # see RESEARCH: GPU clips take minutes; never hold the connection idle
+
+            def _record_submitted(job_id, scene=scene):
+                # Saved the moment Runpod accepts the job, so a lost worker can't
+                # lose track of a paid clip.
+                _save_paid_result(
+                    db,
+                    lambda: db.add(
+                        VideoClip(
+                            video_id=video.id,
+                            scene_id=scene.id,
+                            provider=type(ctx.video_engine).__name__,
+                            status=JobStatus.QUEUED,
+                            provider_job_id=job_id,
+                        )
+                    ),
+                )
+
             try:
-                result = ctx.video_engine.generate_clip(request, output_path)
+                result = ctx.video_engine.generate_clip(
+                    request,
+                    output_path,
+                    on_submitted=_record_submitted,
+                    resume_job_id=resume_job_id,
+                )
             except ApprovalRequiredError as exc:
                 _block(
                     video,
@@ -358,18 +394,42 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
                     f"{len(done)} of {len(scenes)} scene clips generated "
                     f"(blocked on scene {scene.order}):\n{exc.cost_warning.render()}",
                 )
+            except ClipJobLost as exc:
+                # The Runpod job is gone or failed. Mark its record failed so the
+                # next Continue submits a new clip (a deliberate, approved step).
+                db.rollback()
+                db.query(VideoClip).filter(
+                    VideoClip.video_id == video.id,
+                    VideoClip.scene_id == scene.id,
+                    VideoClip.status == JobStatus.QUEUED,
+                ).update({"status": JobStatus.FAILED}, synchronize_session=False)
+                db.commit()
+                raise RuntimeError(
+                    f"Scene {scene.order} clip: {exc}. Click Continue to request this clip again."
+                ) from exc
 
             def _apply_clip(scene=scene, result=result):
-                db.add(
-                    VideoClip(
+                # Turn this scene's submitted record into the finished clip.
+                record = (
+                    db.query(VideoClip)
+                    .filter(
+                        VideoClip.video_id == video.id,
+                        VideoClip.scene_id == scene.id,
+                        VideoClip.status == JobStatus.QUEUED,
+                    )
+                    .order_by(VideoClip.created_at.desc())
+                    .first()
+                )
+                if record is None:
+                    record = VideoClip(
                         video_id=video.id,
                         scene_id=scene.id,
                         provider=type(ctx.video_engine).__name__,
-                        status=JobStatus.SUCCEEDED,
-                        clip_path=result.clip_path,
-                        duration_seconds=result.duration_seconds,
                     )
-                )
+                    db.add(record)
+                record.status = JobStatus.SUCCEEDED
+                record.clip_path = result.clip_path
+                record.duration_seconds = result.duration_seconds
                 video.stage_progress_percent = int((len(done) + 1) / len(scenes) * 100)
 
             _save_paid_result(db, _apply_clip)

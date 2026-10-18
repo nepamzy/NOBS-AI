@@ -23,6 +23,17 @@ class SceneClipResult:
     duration_seconds: float
 
 
+class ClipJobLost(RuntimeError):
+    """A remote clip job can no longer be retrieved (expired, cancelled, or failed
+    on the provider). The caller may safely submit a new one."""
+
+
 class VideoEngine(ABC):
     @abstractmethod
-    def generate_clip(self, request: SceneClipRequest, output_path: str) -> SceneClipResult: ...
+    def generate_clip(
+        self,
+        request: SceneClipRequest,
+        output_path: str,
+        on_submitted=None,
+        resume_job_id: str | None = None,
+    ) -> SceneClipResult: ...

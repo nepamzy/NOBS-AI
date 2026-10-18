@@ -35,7 +35,9 @@ class LocalWanEngine(VideoEngine):
     def __init__(self, api_url: str):
         self._api_url = api_url.rstrip("/") if api_url else ""
 
-    def generate_clip(self, request: SceneClipRequest, output_path: str) -> SceneClipResult:
+    def generate_clip(
+        self, request: SceneClipRequest, output_path: str, on_submitted=None, resume_job_id=None
+    ) -> SceneClipResult:
         if not self._api_url:
             raise ApprovalRequiredError(
                 CostWarning(

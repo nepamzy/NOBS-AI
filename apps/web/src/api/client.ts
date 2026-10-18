@@ -153,6 +153,11 @@ export const api = {
     request<Video>(`/videos/${id}/approve-storyboard`, { method: "POST" }),
   restartVideo: (id: string) => request<Video>(`/videos/${id}/restart`, { method: "POST" }),
   continueVideo: (id: string) => request<Video>(`/videos/${id}/continue`, { method: "POST" }),
+  recoverClip: (id: string, runpodJobId: string) =>
+    request<Video>(`/videos/${id}/recover-clip`, {
+      method: "POST",
+      body: JSON.stringify({ runpod_job_id: runpodJobId }),
+    }),
   updateScene: (videoId: string, sceneId: string, payload: Partial<Scene>) =>
     request<Scene>(`/videos/${videoId}/scenes/${sceneId}`, {
       method: "PATCH",

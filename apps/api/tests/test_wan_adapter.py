@@ -1,4 +1,5 @@
 import base64
+
 import pytest
 
 from services.common.errors import ApprovalRequiredError
@@ -25,6 +26,8 @@ def test_submits_polls_and_downloads_the_finished_clip(tmp_path, monkeypatch):
             return {"id": "job123", "status": "IN_QUEUE"}
 
     class _FakeStatusResponse:
+        status_code = 200
+
         def __init__(self, status):
             self._status = status
 
@@ -34,7 +37,10 @@ def test_submits_polls_and_downloads_the_finished_clip(tmp_path, monkeypatch):
         def json(self):
             return {
                 "status": self._status,
-                "output": {"clip_base64": base64.b64encode(b"fake clip bytes").decode(), "duration_seconds": 8.0},
+                "output": {
+                    "clip_base64": base64.b64encode(b"fake clip bytes").decode(),
+                    "duration_seconds": 8.0,
+                },
             }
 
     class _FakeClipDownload:
@@ -87,6 +93,8 @@ def test_raises_when_job_fails(monkeypatch):
             return {"id": "job123", "status": "IN_QUEUE"}
 
     class _FakeStatusResponse:
+        status_code = 200
+
         def raise_for_status(self):
             pass
 

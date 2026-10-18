@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from app.models.enums import PipelineStage
 from app.storage import to_url
@@ -41,3 +41,10 @@ class VideoRead(BaseModel):
     @property
     def final_video_url(self) -> str | None:
         return to_url(self.final_video_path)
+
+
+class ClipRecoverRequest(BaseModel):
+    """The Runpod request id of a clip that was billed but never saved
+    (copied from the Runpod Requests page). Ids are opaque tokens, not secrets."""
+
+    runpod_job_id: str = Field(min_length=4, max_length=200, pattern=r"^[A-Za-z0-9_-]+$")

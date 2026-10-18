@@ -218,8 +218,16 @@ class _FakeVideoEngine(VideoEngine):
     def __init__(self):
         self.calls: list[SceneClipRequest] = []
 
-    def generate_clip(self, request: SceneClipRequest, output_path: str) -> SceneClipResult:
+    def generate_clip(
+        self,
+        request: SceneClipRequest,
+        output_path: str,
+        on_submitted=None,
+        resume_job_id: str | None = None,
+    ) -> SceneClipResult:
         self.calls.append(request)
+        if on_submitted is not None:
+            on_submitted(f"fake-job-{len(self.calls)}")
         return SceneClipResult(clip_path=output_path, duration_seconds=request.duration_seconds)
 
 

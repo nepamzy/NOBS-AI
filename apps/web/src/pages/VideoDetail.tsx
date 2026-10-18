@@ -48,6 +48,8 @@ export function VideoDetail() {
   const [approving, setApproving] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [continuing, setContinuing] = useState(false);
+  const [runpodJobId, setRunpodJobId] = useState("");
+  const [recovering, setRecovering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("scenes");
@@ -107,6 +109,22 @@ export function VideoDetail() {
       setError(err instanceof ApiError ? err.message : String(err));
     } finally {
       setContinuing(false);
+    }
+  }
+
+  async function handleRecover() {
+    if (!videoId || !video) return;
+    const jobId = runpodJobId.trim();
+    if (!jobId) return;
+    setRecovering(true);
+    setError(null);
+    try {
+      setVideo(await api.recoverClip(videoId, jobId));
+      setRunpodJobId("");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setRecovering(false);
     }
   }
 
@@ -184,6 +202,34 @@ export function VideoDetail() {
           </Button>
         </div>
       </div>
+      {(video.stage === "video_generation" ||
+        (video.stage === "failed" && /Crashed at 'video_generation'/.test(video.stage_detail))) && (
+        <Panel className="mt-4">
+          <p className="text-sm font-medium text-white">Recover a paid clip</p>
+          <p className="mt-1 text-xs text-white/50">
+            If Runpod billed a clip that never reached NOBS AI, paste its request ID from the
+            Runpod Requests page. NOBS AI fetches that clip instead of paying for it again, then
+            continues.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <input
+              value={runpodJobId}
+              onChange={(e) => setRunpodJobId(e.target.value)}
+              placeholder="Runpod request ID"
+              className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white placeholder:text-white/30"
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleRecover}
+              disabled={recovering || !runpodJobId.trim()}
+            >
+              {recovering ? "Recovering…" : "Recover and continue"}
+            </Button>
+          </div>
+        </Panel>
+      )}
+
       <p className="mt-1 text-sm text-white/50">
         Target: {Math.round(video.target_duration_seconds / 60)} min
         {video.auto_publish && (

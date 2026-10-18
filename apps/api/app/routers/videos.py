@@ -11,15 +11,16 @@ from app.engines import get_script_engine
 from app.jobs.queue import enqueue_pipeline_start
 from app.models.asset import Asset
 from app.models.compliance import ComplianceReport
-from app.models.enums import PipelineStage, UserRole
+from app.models.enums import JobStatus, PipelineStage, UserRole
 from app.models.project import Project
 from app.models.script import Scene, Script
 from app.models.user import User
 from app.models.video import Video
+from app.models.video_clip import VideoClip
 from app.models.video_feedback import VideoFeedback
 from app.schemas.asset import AssetRead
 from app.schemas.script import SceneRead, SceneRegenerateRequest, SceneUpdate, ScriptRead
-from app.schemas.video import VideoCreate, VideoRead
+from app.schemas.video import ClipRecoverRequest, VideoCreate, VideoRead
 from app.schemas.video_feedback import VideoFeedbackCreate, VideoFeedbackRead
 from app.schemas.youtube import YouTubeUploadRequest
 from services.ai.script.engine import SceneDraft
@@ -298,6 +299,78 @@ def continue_video(
             )
 
     video.stage = resume_stage
+    video.stage_detail = ""
+    db.commit()
+    db.refresh(video)
+
+    enqueue_pipeline_start(video_id=video.id, run_research=False)
+    return video
+
+
+@router.post("/{video_id}/recover-clip", response_model=VideoRead)
+def recover_clip(
+    video_id: uuid.UUID,
+    payload: ClipRecoverRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Video:
+    """Attach a Runpod clip that was billed but never saved to the first scene
+    still missing a clip, then resume video generation. The clip is polled,
+    not submitted again, so this costs nothing new."""
+    video = _owned_video_or_404(db, video_id, user)
+    if video.stage == PipelineStage.FAILED:
+        match = _CRASHED_AT.search(video.stage_detail or "")
+        recoverable = bool(match) and match.group(1) == PipelineStage.VIDEO_GENERATION.value
+    else:
+        recoverable = video.stage == PipelineStage.VIDEO_GENERATION
+    if not recoverable:
+        raise HTTPException(
+            status_code=409,
+            detail="Recover applies to a video that failed or got stuck while generating clips.",
+        )
+
+    job_id = payload.runpod_job_id.strip()
+    already = (
+        db.query(VideoClip)
+        .filter(VideoClip.video_id == video.id, VideoClip.provider_job_id == job_id)
+        .first()
+    )
+    if already is not None:
+        raise HTTPException(
+            status_code=409, detail="That Runpod request is already attached to this video."
+        )
+
+    scenes = (
+        db.query(Scene)
+        .join(Script, Scene.script_id == Script.id)
+        .filter(Script.video_id == video.id)
+        .order_by(Scene.order)
+        .all()
+    )
+    if not scenes:
+        raise HTTPException(status_code=409, detail="This video has no scenes yet.")
+    finished = {
+        row.scene_id
+        for row in db.query(VideoClip.scene_id).filter(
+            VideoClip.video_id == video.id, VideoClip.status == JobStatus.SUCCEEDED
+        )
+    }
+    target = next((scene for scene in scenes if scene.id not in finished), None)
+    if target is None:
+        raise HTTPException(
+            status_code=409, detail="Every scene already has its clip, so nothing to recover."
+        )
+
+    db.add(
+        VideoClip(
+            video_id=video.id,
+            scene_id=target.id,
+            provider="recovered-runpod",
+            status=JobStatus.QUEUED,
+            provider_job_id=job_id,
+        )
+    )
+    video.stage = PipelineStage.VIDEO_GENERATION
     video.stage_detail = ""
     db.commit()
     db.refresh(video)
