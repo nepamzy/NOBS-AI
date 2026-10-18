@@ -5,7 +5,7 @@ import type { Project, Video } from "../api/types";
 import { LoadingState } from "../components/LoadingState";
 import { PipelineStatus } from "../components/PipelineStatus";
 import { ProjectFeedback } from "../components/ProjectFeedback";
-import { ErrorState, Panel } from "../components/ui";
+import { Button, ErrorState, Panel } from "../components/ui";
 import { UploadSchedules } from "../components/UploadSchedules";
 
 export function ProjectDetail() {
@@ -14,6 +14,25 @@ export function ProjectDetail() {
   const [projectError, setProjectError] = useState<string | null>(null);
   const [videos, setVideos] = useState<Video[]>([]);
   const [videosError, setVideosError] = useState<string | null>(null);
+  const [restartingId, setRestartingId] = useState<string | null>(null);
+  const [restartError, setRestartError] = useState<string | null>(null);
+
+  async function restartVideo(video: Video) {
+    const confirmed = window.confirm(
+      `Restart "${video.topic}" from the beginning? Its current script, scenes, voiceover and clips will be deleted and production starts over.`,
+    );
+    if (!confirmed) return;
+    setRestartingId(video.id);
+    setRestartError(null);
+    try {
+      const updated = await api.restartVideo(video.id);
+      setVideos((prev) => prev.map((v) => (v.id === updated.id ? updated : v)));
+    } catch (err) {
+      setRestartError(errorMessage(err));
+    } finally {
+      setRestartingId(null);
+    }
+  }
 
   useEffect(() => {
     if (!projectId) return;
@@ -48,8 +67,19 @@ export function ProjectDetail() {
                 </div>
               </Panel>
             </Link>
+            <div className="mt-2 flex justify-end">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => restartVideo(video)}
+                disabled={restartingId === video.id}
+              >
+                {restartingId === video.id ? "Restarting…" : "Restart production"}
+              </Button>
+            </div>
           </li>
         ))}
+        {restartError && <ErrorState message={`Couldn't restart: ${restartError}`} />}
         {videosError && (
           <ErrorState message={`Couldn't load videos: ${videosError}`} />
         )}

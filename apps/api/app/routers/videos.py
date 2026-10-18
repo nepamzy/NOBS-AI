@@ -9,6 +9,7 @@ from app.db import get_db
 from app.engines import get_script_engine
 from app.jobs.queue import enqueue_pipeline_start
 from app.models.asset import Asset
+from app.models.compliance import ComplianceReport
 from app.models.enums import PipelineStage, UserRole
 from app.models.project import Project
 from app.models.script import Scene, Script
@@ -222,6 +223,40 @@ def approve_storyboard(
 
     enqueue_pipeline_start(video_id=video.id, run_research=False)
 
+    return video
+
+
+@router.post("/{video_id}/restart", response_model=VideoRead)
+def restart_video(
+    video_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> Video:
+    """Start production over from Topic. Deletes this video's generated work
+    (research, script and scenes, compliance reports, voiceovers, clips,
+    thumbnails, assets) and requeues it. Files already in storage are left
+    alone; the new run writes new ones. Does not touch anything already
+    published to YouTube."""
+    video = _owned_video_or_404(db, video_id, user)
+
+    video.script = None
+    video.research = None
+    video.voiceovers.clear()
+    video.video_clips.clear()
+    video.thumbnails.clear()
+    video.assets.clear()
+    db.query(ComplianceReport).filter(ComplianceReport.video_id == video.id).delete(
+        synchronize_session=False
+    )
+
+    video.stage = PipelineStage.TOPIC
+    video.stage_detail = ""
+    video.stage_progress_percent = 0
+    video.storyboard_approved = False
+    video.final_video_path = None
+    video.music_track = None
+    db.commit()
+    db.refresh(video)
+
+    enqueue_pipeline_start(video_id=video.id, run_research=True)
     return video
 
 

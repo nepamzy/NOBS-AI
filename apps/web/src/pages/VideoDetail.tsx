@@ -46,6 +46,7 @@ export function VideoDetail() {
   const [script, setScript] = useState<Script | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [approving, setApproving] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("scenes");
@@ -74,6 +75,26 @@ export function VideoDetail() {
     const interval = setInterval(refresh, 3000);
     return () => clearInterval(interval);
   }, [refresh]);
+
+  async function handleRestart() {
+    if (!videoId || !video) return;
+    const confirmed = window.confirm(
+      "Restart this video from the beginning? Its current script, scenes, voiceover and clips will be deleted and production starts over.",
+    );
+    if (!confirmed) return;
+    setRestarting(true);
+    setError(null);
+    try {
+      const updated = await api.restartVideo(videoId);
+      setVideo(updated);
+      setScript(null);
+      setAssets([]);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setRestarting(false);
+    }
+  }
 
   async function handleApprove() {
     if (!videoId) return;
@@ -138,6 +159,9 @@ export function VideoDetail() {
           <h1 className="font-heading text-2xl font-semibold text-white">{video.topic}</h1>
           <StatusPill tone={tone} label={label} />
         </div>
+        <Button variant="secondary" size="sm" onClick={handleRestart} disabled={restarting}>
+          {restarting ? "Restarting…" : "Restart production"}
+        </Button>
       </div>
       <p className="mt-1 text-sm text-white/50">
         Target: {Math.round(video.target_duration_seconds / 60)} min

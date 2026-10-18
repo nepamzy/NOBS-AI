@@ -1,6 +1,7 @@
 """RQ task entry points. Runs inside the worker process (apps/worker), not
 the API process — the API only ever enqueues (see app/jobs/queue.py)."""
 
+import logging
 import uuid
 
 from app.config import settings
@@ -11,6 +12,31 @@ from services.ai.research.engine import ResearchEngine
 from services.storage.factory import get_storage_backend
 from services.video.factory import get_video_engine
 from services.voice.factory import get_voice_engine
+
+
+logger = logging.getLogger(__name__)
+
+
+def _record_failure(video_id: str, stage_before: str, exc: Exception) -> None:
+    """Mark a video FAILED on a brand-new DB session. The job's own session may
+    be the thing that just broke (e.g. Supabase dropped the SSL connection
+    mid-call), so reusing it here left videos stuck 'In Progress' forever."""
+    from app.models.enums import PipelineStage
+    from app.models.video import Video
+
+    fresh = SessionLocal()
+    try:
+        video = fresh.get(Video, uuid.UUID(video_id))
+        if video is None:
+            return
+        video.stage = PipelineStage.FAILED
+        video.stage_detail = f"Crashed at '{stage_before}': {type(exc).__name__}: {exc}"
+        fresh.commit()
+    except Exception:
+        logger.exception("Could not record failure for video %s", video_id)
+        fresh.rollback()
+    finally:
+        fresh.close()
 
 
 def _build_context(db) -> PipelineContext:
@@ -113,6 +139,7 @@ def advance_pipeline(video_id: str, run_research: bool) -> str:
         for _ in range(_MAX_STAGES_PER_JOB):
             if video.stage in terminal:
                 break
+            stage_before = video.stage.value
             try:
                 advance_one_stage(video, db, ctx, run_research=run_research)
             except PipelineBlocked as blocked:
@@ -122,6 +149,13 @@ def advance_pipeline(video_id: str, run_research: bool) -> str:
                     db.commit()
                     continue
                 return f"blocked at {blocked.stage}: {blocked.reason}"
+            except Exception as exc:
+                # Anything unexpected used to leave the video silently stuck at
+                # its last stage with no reason shown. Record it as FAILED with
+                # the real error so the page says what happened and Restart works.
+                logger.exception("Pipeline crashed at stage %s for video %s", stage_before, video_id)
+                _record_failure(video_id, stage_before, exc)
+                return f"failed at {stage_before}: {exc}"
 
         ready_to_auto_publish = (
             video.stage == PipelineStage.COMPLETED

@@ -99,7 +99,20 @@ export function PipelineStepper({
               </span>
             </div>
             {i < STAGE_ORDER.length - 1 && (
-              <span className="mx-1 mb-6 h-px w-6 shrink-0 bg-white/15 sm:w-10" />
+              // The connector fills as the stage completes: solid when this
+              // stage is done, half and pulsing while it's running, empty
+              // when it hasn't started. Real stage state, not a timer.
+              <span className="relative mx-1 mb-6 h-px w-6 shrink-0 overflow-hidden bg-white/15 sm:w-10">
+                <span
+                  className={`absolute inset-y-0 left-0 transition-all duration-700 ${
+                    status === "done"
+                      ? "w-full bg-emerald-400"
+                      : status === "current"
+                        ? "w-1/2 animate-pulse bg-accent-400"
+                        : "w-0"
+                  }`}
+                />
+              </span>
             )}
           </li>
         );
