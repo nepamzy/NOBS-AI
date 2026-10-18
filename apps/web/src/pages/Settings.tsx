@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, ApiError, errorMessage } from "../api/client";
-import type { ProviderStatus, Settings as SettingsData } from "../api/types";
+import type { ConnectionTestResult, ProviderStatus, Settings as SettingsData } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { DurationPicker } from "../components/DurationPicker";
 import { LoadingState } from "../components/LoadingState";
@@ -313,16 +313,7 @@ function ProviderStatusSection() {
         <ul className="mt-3 flex flex-col gap-2">
           {providers.map((p) => (
             <li key={p.id}>
-              <Panel className="flex items-center justify-between gap-3 py-2.5">
-                <div>
-                  <p className="text-sm text-white">{p.name}</p>
-                  <p className="text-xs text-white/40">{p.detail}</p>
-                </div>
-                <StatusPill
-                  tone={p.configured ? "success" : "neutral"}
-                  label={p.configured ? "Configured" : "Not configured"}
-                />
-              </Panel>
+              <ProviderRow provider={p} />
             </li>
           ))}
         </ul>
@@ -335,5 +326,48 @@ function ProviderStatusSection() {
         , where the state is checked live rather than just inferred from config presence.
       </p>
     </div>
+  );
+}
+
+function ProviderRow({ provider }: { provider: ProviderStatus }) {
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState<ConnectionTestResult | null>(null);
+
+  function handleTest() {
+    setTesting(true);
+    setResult(null);
+    api
+      .testConnection(provider.id)
+      .then(setResult)
+      .catch((err) => setResult({ id: provider.id, ok: false, detail: errorMessage(err) }))
+      .finally(() => setTesting(false));
+  }
+
+  return (
+    <Panel className="py-2.5">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm text-white">{provider.name}</p>
+          <p className="text-xs text-white/40">{provider.detail}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <StatusPill
+            tone={provider.configured ? "success" : "neutral"}
+            label={provider.configured ? "Configured" : "Not configured"}
+          />
+          {provider.configured && (
+            <Button variant="secondary" onClick={handleTest} disabled={testing}>
+              {testing ? "Testing…" : "Test"}
+            </Button>
+          )}
+        </div>
+      </div>
+      {result && (
+        <p className={`mt-2 text-xs ${result.ok ? "text-emerald-300" : "text-amber-300"}`}>
+          {result.ok ? "Working: " : "Not working: "}
+          {result.detail}
+        </p>
+      )}
+    </Panel>
   );
 }

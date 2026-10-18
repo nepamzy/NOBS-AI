@@ -281,4 +281,6 @@ export const api = {
   publishClip: (clipId: string) => request<Clip>(`/clips/${clipId}/publish`, { method: "POST" }),
 
   getConnectionsStatus: () => request<ConnectionsStatus>("/connections/status"),
+  testConnection: (providerId: string) =>
+    request<ConnectionTestResult>(`/connections/test/${providerId}`, { method: "POST" }),
 };

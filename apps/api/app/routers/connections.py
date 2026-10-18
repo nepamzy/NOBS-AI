@@ -16,6 +16,7 @@ from app.models.user import User
 from app.schemas.connections import ChannelConnectionStatus, ConnectionsStatusRead, ProviderStatus
 from services.common.errors import EngineNotConfiguredError
 from services.connectors.youtube.adapter import YouTubeConnector
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/connections", tags=["connections"])
 
@@ -141,9 +142,7 @@ def _youtube_channel_status(
             error=str(exc),
         )
     except httpx.HTTPStatusError as exc:
-        reason = "Token was rejected — it may be revoked or missing the required scope."
-        if exc.response.status_code == 403:
-            reason = "Access denied — check the OAuth client's scopes in Google Cloud Console."
+        reason = _youtube_failure_reason(exc)
         return ChannelConnectionStatus(
             id=channel_id,
             name=name,
@@ -205,3 +204,152 @@ def get_connections_status(_admin: User = Depends(require_admin)) -> Connections
         ),
     ]
     return ConnectionsStatusRead(providers=providers, youtube_channels=youtube_channels)
+
+
+def _youtube_failure_reason(exc: httpx.HTTPStatusError) -> str:
+    """Say which step of the YouTube check failed, so the fix is obvious.
+
+    - The token-refresh call (oauth2.googleapis.com) failing means Google
+      rejected the refresh token itself: revoked, expired (apps left in
+      Google's "Testing" publishing status expire refresh tokens after about
+      7 days), or issued for a different OAuth client than the ID/secret set.
+    - A 403 on the YouTube API means the token works but lacks a scope.
+    """
+    if "oauth2.googleapis.com" in str(exc.request.url):
+        return (
+            "Google rejected the refresh token. It was revoked, it expired (apps still in "
+            "Google's 'Testing' status lose refresh tokens after about 7 days), or it was "
+            "issued for a different OAuth client than GOOGLE_YOUTUBE_CLIENT_ID/SECRET. "
+            "Generate a new refresh token with the same client."
+        )
+    if exc.response.status_code == 403:
+        return (
+            "The token works but YouTube denied the request. It is missing a scope: the "
+            "identity check needs youtube.readonly in addition to youtube.upload."
+        )
+    return f"YouTube rejected the request (HTTP {exc.response.status_code})."
+
+
+class ConnectionTestResult(BaseModel):
+    id: str
+    ok: bool
+    detail: str
+
+
+@router.post("/test/{provider_id}", response_model=ConnectionTestResult)
+def test_connection(provider_id: str, _admin: User = Depends(require_admin)) -> ConnectionTestResult:
+    """Run ONE free check against a single provider, only when an admin asks.
+
+    Never called on page load. Each check uses a read-only endpoint that costs
+    nothing (model list, account info, endpoint health, YouTube channels.list),
+    so this never spends money or starts a GPU.
+    """
+    if provider_id == "llm":
+        return _test_llm()
+    if provider_id == "voice":
+        return _test_voice()
+    if provider_id == "video":
+        return _test_video()
+    if provider_id in ("youtube_main", "youtube_clips"):
+        return _test_youtube(provider_id)
+    return ConnectionTestResult(
+        id=provider_id, ok=False, detail="No free test is available for this provider yet."
+    )
+
+
+def _test_llm() -> ConnectionTestResult:
+    if not (settings.llm_provider and settings.llm_api_key):
+        return ConnectionTestResult(id="llm", ok=False, detail="Not configured.")
+    try:
+        response = httpx.get(
+            "https://api.anthropic.com/v1/models",
+            headers={"x-api-key": settings.llm_api_key, "anthropic-version": "2023-06-01"},
+            timeout=15,
+        )
+    except httpx.HTTPError as exc:
+        return ConnectionTestResult(id="llm", ok=False, detail=f"Couldn't reach Anthropic: {exc}")
+    if response.status_code == 200:
+        return ConnectionTestResult(id="llm", ok=True, detail="Anthropic accepted the key.")
+    return ConnectionTestResult(
+        id="llm", ok=False, detail=f"Anthropic rejected the key (HTTP {response.status_code})."
+    )
+
+
+def _test_voice() -> ConnectionTestResult:
+    if settings.voice_provider != "elevenlabs":
+        return ConnectionTestResult(
+            id="voice", ok=False, detail="Test is only available for ElevenLabs right now."
+        )
+    if not settings.elevenlabs_api_key:
+        return ConnectionTestResult(id="voice", ok=False, detail="Not configured.")
+    try:
+        response = httpx.get(
+            "https://api.elevenlabs.io/v1/user",
+            headers={"xi-api-key": settings.elevenlabs_api_key},
+            timeout=15,
+        )
+    except httpx.HTTPError as exc:
+        return ConnectionTestResult(id="voice", ok=False, detail=f"Couldn't reach ElevenLabs: {exc}")
+    if response.status_code == 200:
+        return ConnectionTestResult(id="voice", ok=True, detail="ElevenLabs accepted the key.")
+    return ConnectionTestResult(
+        id="voice", ok=False, detail=f"ElevenLabs rejected the key (HTTP {response.status_code})."
+    )
+
+
+def _test_video() -> ConnectionTestResult:
+    if settings.video_provider == "wan_local":
+        if not settings.local_wan_api_url:
+            return ConnectionTestResult(id="video", ok=False, detail="Not configured.")
+        try:
+            # Any HTTP response means the laptop server is reachable.
+            response = httpx.get(settings.local_wan_api_url, timeout=15)
+        except httpx.HTTPError as exc:
+            return ConnectionTestResult(
+                id="video",
+                ok=False,
+                detail=f"Couldn't reach your laptop GPU server. Is it running and public? ({exc})",
+            )
+        return ConnectionTestResult(
+            id="video", ok=True, detail=f"Laptop GPU server reachable (HTTP {response.status_code})."
+        )
+    if not (settings.runpod_api_key and settings.wan_endpoint_id):
+        return ConnectionTestResult(id="video", ok=False, detail="Not configured.")
+    try:
+        response = httpx.get(
+            f"https://api.runpod.ai/v2/{settings.wan_endpoint_id}/health",
+            headers={"Authorization": f"Bearer {settings.runpod_api_key}"},
+            timeout=15,
+        )
+    except httpx.HTTPError as exc:
+        return ConnectionTestResult(id="video", ok=False, detail=f"Couldn't reach Runpod: {exc}")
+    if response.status_code == 200:
+        return ConnectionTestResult(id="video", ok=True, detail="Runpod endpoint responded.")
+    return ConnectionTestResult(
+        id="video", ok=False, detail=f"Runpod rejected the request (HTTP {response.status_code})."
+    )
+
+
+def _test_youtube(channel_id: str) -> ConnectionTestResult:
+    if channel_id == "youtube_main":
+        client_id, client_secret, refresh = (
+            settings.google_youtube_client_id,
+            settings.google_youtube_client_secret,
+            settings.google_youtube_refresh_token,
+        )
+        name = "Main channel"
+    else:
+        client_id, client_secret, refresh = (
+            settings.clips_youtube_client_id,
+            settings.clips_youtube_client_secret,
+            settings.clips_youtube_refresh_token,
+        )
+        name = "Clips channel"
+    status = _youtube_channel_status(channel_id, name, client_id, client_secret, refresh)
+    if status.connected:
+        return ConnectionTestResult(
+            id=channel_id, ok=True, detail=f"Connected as {status.channel_title}."
+        )
+    return ConnectionTestResult(
+        id=channel_id, ok=False, detail=status.error or "Not configured."
+    )

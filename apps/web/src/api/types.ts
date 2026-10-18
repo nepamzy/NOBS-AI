@@ -286,6 +286,12 @@ export interface ChannelConnectionStatus {
   error: string | null;
 }
 
+export interface ConnectionTestResult {
+  id: string;
+  ok: boolean;
+  detail: string;
+}
+
 export interface ConnectionsStatus {
   providers: ProviderStatus[];
   youtube_channels: ChannelConnectionStatus[];
