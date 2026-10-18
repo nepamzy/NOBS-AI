@@ -2,13 +2,16 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { RequireAdmin, RequireAuth } from "./auth/RequireAuth";
 import { AdminDashboard } from "./pages/AdminDashboard";
+import { Analytics } from "./pages/Analytics";
 import { Assistant } from "./pages/Assistant";
+import { ChannelConnections } from "./pages/ChannelConnections";
 import { Clips } from "./pages/Clips";
 import { CreateVideo } from "./pages/CreateVideo";
 import { Dashboard } from "./pages/Dashboard";
 import { Login } from "./pages/Login";
 import { ProjectDetail } from "./pages/ProjectDetail";
 import { Projects } from "./pages/Projects";
+import { PublishingSchedules } from "./pages/PublishingSchedules";
 import { Settings } from "./pages/Settings";
 import { Signup } from "./pages/Signup";
 import { SpendDashboard } from "./pages/SpendDashboard";
@@ -30,10 +33,13 @@ export function App() {
           <Route path="projects/:projectId" element={<ProjectDetail />} />
           <Route path="library" element={<VideoLibrary />} />
           <Route path="videos/:videoId" element={<VideoDetail />} />
+          <Route path="analytics" element={<Analytics />} />
+          <Route path="publishing" element={<PublishingSchedules />} />
           <Route path="settings" element={<Settings />} />
           <Route element={<RequireAdmin />}>
             <Route path="admin" element={<AdminDashboard />} />
             <Route path="spend" element={<SpendDashboard />} />
+            <Route path="connections" element={<ChannelConnections />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

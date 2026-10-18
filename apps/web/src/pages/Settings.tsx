@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, ApiError, errorMessage } from "../api/client";
-import type { Settings as SettingsData } from "../api/types";
+import type { ProviderStatus, Settings as SettingsData } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { DurationPicker } from "../components/DurationPicker";
 import { LoadingState } from "../components/LoadingState";
 import { StylePicker } from "../components/StylePicker";
+import { Button, ErrorState, Panel, StatusPill } from "../components/ui";
 import { VoicePicker } from "../components/VoicePicker";
 
 export function Settings() {
@@ -41,7 +42,7 @@ export function Settings() {
 
   if (!settings) {
     return error ? (
-      <p className="text-red-400">Couldn't load settings: {error}</p>
+      <ErrorState message={`Couldn't load settings: ${error}`} />
     ) : (
       <LoadingState />
     );
@@ -51,10 +52,7 @@ export function Settings() {
     <div className="max-w-2xl">
       <h1 className="font-heading text-2xl font-semibold text-white">Settings</h1>
       <p className="mt-2 max-w-md text-white/60">
-        Defaults for new videos, and the weekly goal shown on the Dashboard. Provider settings
-        (LLM, Wan, Chatterbox) live in <code className="text-white/80">.env</code>, not here —
-        they're gated behind Nobert's cost approval per CLAUDE.md, not something to flip from the
-        UI.
+        Defaults for new videos, and the weekly goal shown on the Dashboard.
       </p>
 
       <form onSubmit={handleSubmit} className="mt-6 flex max-w-md flex-col gap-5">
@@ -96,34 +94,77 @@ export function Settings() {
           />
         </label>
 
-        {error && (
-          <p className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-            {error}
-          </p>
-        )}
+        {error && <ErrorState message={error} />}
 
         <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            disabled={saving}
-            className="w-fit rounded-md bg-accent-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-600 disabled:opacity-40"
-          >
+          <Button type="submit" disabled={saving}>
             {saving ? "Saving…" : "Save"}
-          </button>
+          </Button>
           {saved && <span className="text-xs text-emerald-400">Saved</span>}
         </div>
       </form>
 
       <PasswordSection />
-      {user?.role === "admin" && (
-        <p className="mt-12 text-sm text-white/40">
-          Spend tracking moved to its own{" "}
-          <Link to="/spend" className="text-accent-400 hover:underline">
-            Spend dashboard
-          </Link>
-          .
-        </p>
+      {user?.role === "admin" && <ProviderStatusSection />}
+    </div>
+  );
+}
+
+function ProviderStatusSection() {
+  const [providers, setProviders] = useState<ProviderStatus[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .getConnectionsStatus()
+      .then((s) => setProviders(s.providers))
+      .catch((err) => setError(errorMessage(err)));
+  }, []);
+
+  return (
+    <div className="mt-12 max-w-md">
+      <h2 className="font-heading text-lg font-semibold text-white">Provider status</h2>
+      <p className="mt-1 text-sm text-white/60">
+        Whether each engine's required configuration is present — never the values themselves.
+        Set and change these directly in your deployment's environment config, not here; see{" "}
+        <code className="text-white/80">.env.example</code> for what each one needs.
+      </p>
+
+      {error && (
+        <div className="mt-3">
+          <ErrorState message={error} />
+        </div>
       )}
+      {!providers && !error && (
+        <div className="mt-3">
+          <LoadingState />
+        </div>
+      )}
+      {providers && (
+        <ul className="mt-3 flex flex-col gap-2">
+          {providers.map((p) => (
+            <li key={p.id}>
+              <Panel className="flex items-center justify-between gap-3 py-2.5">
+                <div>
+                  <p className="text-sm text-white">{p.name}</p>
+                  <p className="text-xs text-white/40">{p.detail}</p>
+                </div>
+                <StatusPill
+                  tone={p.configured ? "success" : "neutral"}
+                  label={p.configured ? "Configured" : "Not configured"}
+                />
+              </Panel>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-3 text-xs text-white/40">
+        YouTube channel connections live on their own{" "}
+        <Link to="/connections" className="text-accent-400 hover:underline">
+          Channel Connections page
+        </Link>
+        , where the state is checked live rather than just inferred from config presence.
+      </p>
     </div>
   );
 }
@@ -203,24 +244,15 @@ function PasswordSection() {
           />
         </label>
 
-        {error && (
-          <p className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-            {error}
-          </p>
-        )}
+        {error && <ErrorState message={error} />}
 
         <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-fit rounded-md bg-accent-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-600 disabled:opacity-40"
-          >
+          <Button type="submit" disabled={submitting}>
             {submitting ? "Updating…" : "Update password"}
-          </button>
+          </Button>
           {saved && <span className="text-xs text-emerald-400">Password updated</span>}
         </div>
       </form>
     </div>
   );
 }
-

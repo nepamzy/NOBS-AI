@@ -14,6 +14,7 @@ from app.routers import (
     auth,
     chat,
     clips,
+    connections,
     health,
     payments,
     projects,
@@ -50,6 +51,7 @@ app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(chat.router)
 app.include_router(clips.router)
+app.include_router(connections.router)
 app.include_router(payments.router)
 app.include_router(projects.router)
 app.include_router(settings_router.router)

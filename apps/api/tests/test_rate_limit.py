@@ -1,6 +1,16 @@
 import pytest
+import redis
+from app.config import settings
 from app.rate_limit import rate_limit
 from fastapi import HTTPException
+
+
+def _redis_reachable() -> bool:
+    try:
+        redis.from_url(settings.redis_url).ping()
+        return True
+    except redis.RedisError:
+        return False
 
 
 class _FakeRedis:
@@ -69,3 +79,29 @@ def test_fails_open_when_redis_is_unreachable(monkeypatch):
 
     dependency(_FakeRequest("1.2.3.4"))
     dependency(_FakeRequest("1.2.3.4"))  # would be blocked if Redis worked — must not raise
+
+
+# These two exercise the real /auth/login route against the real
+# Redis-backed limiter (not the fake above), to regression-test the
+# conftest `_reset_rate_limits` autouse fixture: every starlette TestClient
+# reports the same "testclient" host, so without that fixture resetting
+# `ratelimit:*` before each test, the first test exhausting the real
+# 10-requests/300s login limit would leak into the second and incorrectly
+# 429 it. Skipped (not failed) when no Redis is reachable, matching the
+# rate limiter's own fail-open behavior — there's nothing to regress on.
+@pytest.mark.skipif(
+    not _redis_reachable(), reason="no reachable Redis to test the real limiter against"
+)
+def test_login_rate_limit_exhausts_within_one_test(client):
+    for _ in range(10):
+        client.post("/auth/login", json={"email": "nobody@example.com", "password": "wrong"})
+    response = client.post("/auth/login", json={"email": "nobody@example.com", "password": "wrong"})
+    assert response.status_code == 429
+
+
+@pytest.mark.skipif(
+    not _redis_reachable(), reason="no reachable Redis to test the real limiter against"
+)
+def test_login_rate_limit_does_not_leak_into_the_next_test(client):
+    response = client.post("/auth/login", json={"email": "nobody@example.com", "password": "wrong"})
+    assert response.status_code == 401

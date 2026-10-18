@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, errorMessage, resolveStorageUrl } from "../api/client";
 import type { ChatAttachment, ChatMessage, GeneratedFile } from "../api/types";
 import { MicButton } from "../components/MicButton";
+import { ErrorState } from "../components/ui";
 import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis";
 
 // Chat history otherwise lives only in this component's React state —
@@ -239,11 +240,15 @@ export function Assistant() {
       )}
 
       {error && (
-        <p className="mt-2 text-sm text-red-400">
-          {error.includes("LLM_PROVIDER")
-            ? "The assistant isn't set up yet — it needs the same LLM provider/key as script generation (see Settings)."
-            : error}
-        </p>
+        <div className="mt-2">
+          <ErrorState
+            message={
+              error.includes("LLM_PROVIDER")
+                ? "The assistant isn't set up yet — it needs the same LLM provider/key as script generation (see Settings)."
+                : error
+            }
+          />
+        </div>
       )}
 
       {attachment && (

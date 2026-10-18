@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError, errorMessage } from "../api/client";
 import type { BillingType, CostCategory, CostEntry, CostStatus, SpendSummary } from "../api/types";
 import { LoadingState } from "../components/LoadingState";
+import { Button, ErrorState, Panel, StatusPill, type Tone } from "../components/ui";
 
 const CATEGORY_LABELS: Record<CostCategory, string> = {
   gpu: "GPU",
@@ -26,10 +27,10 @@ const BILLING_LABELS: Record<BillingType, string> = {
   free: "Free",
 };
 
-const STATUS_STYLES: Record<CostStatus, { dot: string; text: string; label: string }> = {
-  active: { dot: "bg-emerald-400", text: "text-emerald-300", label: "Active" },
-  pending: { dot: "bg-amber-400", text: "text-amber-300", label: "Pending" },
-  stopped: { dot: "bg-white/30", text: "text-white/50", label: "Stopped" },
+const STATUS_TONES: Record<CostStatus, { tone: Tone; label: string }> = {
+  active: { tone: "success", label: "Active" },
+  pending: { tone: "warning", label: "Pending" },
+  stopped: { tone: "neutral", label: "Stopped" },
 };
 
 function effectiveCost(entry: CostEntry): number {
@@ -84,7 +85,11 @@ export function SpendDashboard() {
   }
 
   if (error && !spend) {
-    return <p className="p-6 text-sm text-red-400">{error}</p>;
+    return (
+      <div className="p-6">
+        <ErrorState message={error} />
+      </div>
+    );
   }
   if (!spend) {
     return (
@@ -161,18 +166,18 @@ export function SpendDashboard() {
 
         {showForm && <SpendForm onLogged={() => { refresh(); setShowForm(false); }} />}
 
-        {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
+        {error && (
+          <div className="mt-3">
+            <ErrorState message={error} />
+          </div>
+        )}
 
         <ul className="mt-4 flex flex-col gap-2">
           {sortedEntries.map((entry) => {
-            const style = STATUS_STYLES[entry.status];
+            const status = STATUS_TONES[entry.status];
             return (
-              <li
-                key={entry.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-2.5 text-sm"
-              >
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${style.dot}`} title={style.label} />
+              <li key={entry.id}>
+                <Panel className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-sm">
                   <div className="min-w-0">
                     <div className="truncate font-medium text-white">{entry.service}</div>
                     <div className="truncate text-xs text-white/40">
@@ -182,32 +187,32 @@ export function SpendDashboard() {
                       {entry.purpose}
                     </div>
                   </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-3">
-                  <span className={`text-xs ${style.text}`}>{style.label}</span>
-                  <span className="text-right text-xs text-white/60">
-                    {entry.actual_cost_usd != null
-                      ? `$${entry.actual_cost_usd.toFixed(2)} actual`
-                      : entry.estimated_cost_usd != null
-                        ? `~$${entry.estimated_cost_usd.toFixed(2)} est.`
-                        : "no cost logged"}
-                  </span>
-                  <button
-                    disabled={busyId === entry.id}
-                    onClick={() => cycleStatus(entry)}
-                    className="text-xs text-white/40 hover:text-white disabled:opacity-40"
-                    title="Cycle status (active → stopped → pending → active)"
-                  >
-                    Change status
-                  </button>
-                  <button
-                    disabled={busyId === entry.id}
-                    onClick={() => remove(entry)}
-                    className="text-xs text-white/40 hover:text-red-400 disabled:opacity-40"
-                  >
-                    Remove
-                  </button>
-                </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <StatusPill tone={status.tone} label={status.label} />
+                    <span className="text-right text-xs text-white/60">
+                      {entry.actual_cost_usd != null
+                        ? `$${entry.actual_cost_usd.toFixed(2)} actual`
+                        : entry.estimated_cost_usd != null
+                          ? `~$${entry.estimated_cost_usd.toFixed(2)} est.`
+                          : "no cost logged"}
+                    </span>
+                    <button
+                      disabled={busyId === entry.id}
+                      onClick={() => cycleStatus(entry)}
+                      className="text-xs text-white/40 hover:text-white disabled:opacity-40"
+                      title="Cycle status (active → stopped → pending → active)"
+                    >
+                      Change status
+                    </button>
+                    <button
+                      disabled={busyId === entry.id}
+                      onClick={() => remove(entry)}
+                      className="text-xs text-white/40 hover:text-red-400 disabled:opacity-40"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </Panel>
               </li>
             );
           })}
@@ -219,10 +224,10 @@ export function SpendDashboard() {
 
 function StatTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+    <Panel className="p-4">
       <div className="text-xs uppercase tracking-wide text-white/50">{label}</div>
       <div className="mt-1 text-xl font-semibold text-white">{value}</div>
-    </div>
+    </Panel>
   );
 }
 
@@ -352,14 +357,10 @@ function SpendForm({ onLogged }: { onLogged: () => void }) {
           className="rounded-md border border-white/10 bg-black/20 px-2 py-1.5 text-sm text-white placeholder:text-white/30"
         />
       </label>
-      {error && <p className="text-xs text-red-400">{error}</p>}
-      <button
-        type="submit"
-        disabled={submitting}
-        className="w-fit rounded-md bg-white px-3 py-1.5 text-xs font-medium text-black disabled:opacity-40"
-      >
+      {error && <ErrorState message={error} />}
+      <Button type="submit" disabled={submitting} size="sm" className="w-fit">
         {submitting ? "Logging…" : "Log cost"}
-      </button>
+      </Button>
     </form>
   );
 }

@@ -31,16 +31,27 @@ const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
   success: "bg-emerald-500 text-black hover:bg-emerald-400",
 };
 
+type ButtonSize = "sm" | "md";
+
+const BUTTON_SIZES: Record<ButtonSize, string> = {
+  sm: "px-2.5 py-1 text-xs",
+  md: "px-4 py-2 text-sm",
+};
+
 export function Button({
   variant = "primary",
+  size = "md",
   className = "",
   type = "button",
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+}) {
   return (
     <button
       type={type}
-      className={`rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${BUTTON_VARIANTS[variant]} ${className}`}
+      className={`rounded-md font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${BUTTON_SIZES[size]} ${BUTTON_VARIANTS[variant]} ${className}`}
       {...props}
     />
   );

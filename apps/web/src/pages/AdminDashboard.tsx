@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { AdminUser, SignupPin, TokenPackage } from "../api/types";
 import { LoadingState } from "../components/LoadingState";
+import { Button, ErrorState, Panel, StatusPill } from "../components/ui";
 
 export function AdminDashboard() {
   const [users, setUsers] = useState<AdminUser[] | null>(null);
@@ -32,7 +33,7 @@ export function AdminDashboard() {
       <h2 className="mt-10 mb-3 text-sm font-medium uppercase tracking-wide text-white/50">
         Users
       </h2>
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <ErrorState message={error} />}
       {users === null ? (
         <LoadingState />
       ) : users.length === 0 ? (
@@ -83,22 +84,22 @@ function PinGenerator() {
   const expired = pin !== null && secondsLeft <= 0;
 
   return (
-    <div className="mt-6 rounded-lg border border-white/10 bg-white/5 p-5">
+    <Panel className="mt-6">
       <h2 className="font-heading text-base font-semibold text-white">Invite someone</h2>
       <p className="mt-1 text-sm text-white/60">
         Generates a 6-digit PIN, good for 5 minutes and exactly one signup. Send it to them
         yourself — it's shown here only once.
       </p>
 
-      <button
-        onClick={generate}
-        disabled={generating}
-        className="mt-4 rounded-md bg-accent-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-600 disabled:opacity-40"
-      >
+      <Button onClick={generate} disabled={generating} className="mt-4">
         {generating ? "Generating…" : "Generate PIN"}
-      </button>
+      </Button>
 
-      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+      {error && (
+        <div className="mt-3">
+          <ErrorState message={error} />
+        </div>
+      )}
 
       {pin && (
         <div className="mt-4 flex items-center gap-4 rounded-md border border-accent-500/30 bg-accent-500/10 px-4 py-3">
@@ -110,7 +111,7 @@ function PinGenerator() {
           </span>
         </div>
       )}
-    </div>
+    </Panel>
   );
 }
 
@@ -124,11 +125,14 @@ function PackagesPreview() {
   if (!packages || packages.length === 0) return null;
 
   return (
-    <div className="mt-6 rounded-lg border border-white/10 bg-white/5 p-5">
-      <h2 className="font-heading text-base font-semibold text-white">Token packages (draft)</h2>
+    <Panel className="mt-6">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-heading text-base font-semibold text-white">Token packages (draft)</h2>
+        <StatusPill tone="neutral" label="Not purchasable" />
+      </div>
       <p className="mt-1 text-sm text-white/60">
-        Placeholder pricing only — nothing here is purchasable yet, no payment provider is
-        connected. Adjust these anytime in <code className="text-white/80">services/payments/packages.py</code>.
+        Placeholder pricing only — no payment provider is connected. Adjust these anytime in{" "}
+        <code className="text-white/80">services/payments/packages.py</code>.
       </p>
       <div className="mt-4 grid grid-cols-3 gap-3">
         {packages.map((pkg) => (
@@ -141,7 +145,7 @@ function PackagesPreview() {
           </div>
         ))}
       </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -164,68 +168,74 @@ function UserRow({ user, onChanged }: { user: AdminUser; onChanged: () => void }
   }
 
   return (
-    <li className="rounded-md border border-white/10 bg-white/5 px-4 py-3 text-sm">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <span className="font-medium text-white">{user.display_name}</span>
-          <span className="ml-2 text-xs text-white/40">{user.email}</span>
-          {user.is_suspended && (
-            <span className="ml-2 rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-300">
-              Suspended
-            </span>
+    <li>
+      <Panel className="px-4 py-3 text-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <span className="font-medium text-white">{user.display_name}</span>
+            <span className="ml-2 text-xs text-white/40">{user.email}</span>
+            {user.is_suspended && (
+              <span className="ml-2">
+                <StatusPill tone="error" label="Suspended" />
+              </span>
+            )}
+          </div>
+          <span className="text-xs text-white/50">{user.token_balance} tokens</span>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {user.is_suspended ? (
+            <Button
+              variant="secondary"
+              onClick={() => run(() => api.unsuspendUser(user.id))}
+              disabled={busy}
+              size="sm"
+            >
+              Unsuspend
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              onClick={() => run(() => api.suspendUser(user.id))}
+              disabled={busy}
+              size="sm"
+            >
+              Suspend
+            </Button>
           )}
-        </div>
-        <span className="text-xs text-white/50">{user.token_balance} tokens</span>
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {user.is_suspended ? (
-          <button
-            onClick={() => run(() => api.unsuspendUser(user.id))}
+          <Button
+            variant="danger"
+            onClick={() => {
+              if (confirm(`Delete ${user.display_name}? This deletes their projects and videos.`)) {
+                run(() => api.deleteUser(user.id));
+              }
+            }}
             disabled={busy}
-            className="rounded-md border border-white/10 px-2.5 py-1 text-xs text-white/70 hover:text-white disabled:opacity-40"
+            size="sm"
           >
-            Unsuspend
-          </button>
-        ) : (
-          <button
-            onClick={() => run(() => api.suspendUser(user.id))}
-            disabled={busy}
-            className="rounded-md border border-white/10 px-2.5 py-1 text-xs text-white/70 hover:text-white disabled:opacity-40"
-          >
-            Suspend
-          </button>
-        )}
-        <button
-          onClick={() => {
-            if (confirm(`Delete ${user.display_name}? This deletes their projects and videos.`)) {
-              run(() => api.deleteUser(user.id));
-            }
-          }}
-          disabled={busy}
-          className="rounded-md border border-red-500/30 px-2.5 py-1 text-xs text-red-300 hover:text-red-200 disabled:opacity-40"
-        >
-          Delete
-        </button>
-        <div className="ml-auto flex items-center gap-1.5">
-          <input
-            type="number"
-            min={1}
-            value={grantAmount}
-            onChange={(e) => setGrantAmount(e.target.value)}
-            className="w-16 rounded-md border border-white/10 bg-black/20 px-2 py-1 text-xs text-white"
-          />
-          <button
-            onClick={() => run(() => api.grantTokens(user.id, Number(grantAmount)))}
-            disabled={busy || !Number(grantAmount)}
-            className="rounded-md border border-white/10 px-2.5 py-1 text-xs text-white/70 hover:text-white disabled:opacity-40"
-          >
-            Grant tokens
-          </button>
+            Delete
+          </Button>
+          <div className="ml-auto flex items-center gap-1.5">
+            <input
+              type="number"
+              min={1}
+              value={grantAmount}
+              onChange={(e) => setGrantAmount(e.target.value)}
+              className="w-16 rounded-md border border-white/10 bg-black/20 px-2 py-1 text-xs text-white"
+            />
+            <Button
+              variant="secondary"
+              onClick={() => run(() => api.grantTokens(user.id, Number(grantAmount)))}
+              disabled={busy || !Number(grantAmount)}
+              size="sm"
+            >
+              Grant tokens
+            </Button>
+          </div>
         </div>
-      </div>
 
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+        {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+      </Panel>
     </li>
   );
 }

@@ -29,6 +29,7 @@ from services.common.errors import EngineNotConfiguredError
 _TOKEN_URL = "https://oauth2.googleapis.com/token"
 _UPLOAD_URL = "https://www.googleapis.com/upload/youtube/v3/videos"
 _VIDEOS_URL = "https://www.googleapis.com/youtube/v3/videos"
+_CHANNELS_URL = "https://www.googleapis.com/youtube/v3/channels"
 _REQUEST_TIMEOUT_SECONDS = 30
 _UPLOAD_TIMEOUT_SECONDS = 300  # video files are much larger than a typical API call
 
@@ -38,6 +39,13 @@ class VideoUploadResult:
     video_id: str
     title: str
     privacy_status: str  # always "private" — see module docstring
+
+
+@dataclass
+class ChannelIdentity:
+    channel_id: str
+    title: str
+    thumbnail_url: str | None
 
 
 class YouTubeConnector:
@@ -119,6 +127,39 @@ class YouTubeConnector:
             video_id=result["id"],
             title=result["snippet"]["title"],
             privacy_status=result["status"]["privacyStatus"],
+        )
+
+    def get_channel_identity(self) -> ChannelIdentity:
+        """Verifies this OAuth connection is actually live and usable right
+        now, by asking YouTube who it is — not just that the three env vars
+        are non-empty. Read-only `channels.list` call against the already-
+        approved YouTube Data API integration (1 quota unit, free, same API
+        upload/publish already call), so a Channel Connections screen can
+        show a real "Connected as <channel>" instead of inferring it from
+        config presence alone. Raises on a revoked token, missing scope, or
+        any other live auth failure — callers show that as "not connected",
+        never as connected."""
+        self._require_configured()
+
+        response = httpx.get(
+            _CHANNELS_URL,
+            params={"part": "snippet", "mine": "true"},
+            headers={"Authorization": f"Bearer {self._access_token()}"},
+            timeout=_REQUEST_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        items = response.json().get("items", [])
+        if not items:
+            raise EngineNotConfiguredError(
+                "YouTube accepted the credentials but no channel is associated with this "
+                "account — nothing to connect to."
+            )
+        channel = items[0]
+        snippet = channel.get("snippet", {})
+        thumbnails = snippet.get("thumbnails", {})
+        thumbnail_url = (thumbnails.get("default") or {}).get("url")
+        return ChannelIdentity(
+            channel_id=channel["id"], title=snippet.get("title", ""), thumbnail_url=thumbnail_url
         )
 
     def get_upload_status(self, video_id: str) -> dict:

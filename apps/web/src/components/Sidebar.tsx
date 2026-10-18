@@ -10,8 +10,24 @@ const links = [
   { to: "/library", label: "Video Library" },
   { to: "/clips", label: "Clips" },
   { to: "/assistant", label: "Assistant" },
+  { to: "/analytics", label: "Analytics" },
+  { to: "/publishing", label: "Publishing & Schedules" },
   { to: "/settings", label: "Settings" },
 ];
+
+const adminLinks = [
+  { to: "/admin", label: "Admin" },
+  { to: "/connections", label: "Channel Connections" },
+  { to: "/spend", label: "Spend" },
+];
+
+function navLinkClass({ isActive }: { isActive: boolean }): string {
+  return `rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+    isActive
+      ? "bg-accent-500/15 text-accent-400"
+      : "text-white/60 hover:bg-white/5 hover:text-white/90"
+  }`;
+}
 
 export function Sidebar() {
   const { user, logout } = useAuth();
@@ -47,7 +63,7 @@ export function Sidebar() {
 
       <div
         id="sidebar-nav-links"
-        className={`${menuOpen ? "flex" : "hidden"} mt-3 flex-1 flex-col gap-1 md:mt-0 md:flex`}
+        className={`${menuOpen ? "flex" : "hidden"} mt-3 flex-1 flex-col gap-1 overflow-y-auto md:mt-0 md:flex`}
       >
         {links.map((link) => (
           <NavLink
@@ -55,47 +71,22 @@ export function Sidebar() {
             to={link.to}
             end={link.end}
             onClick={() => setMenuOpen(false)}
-            className={({ isActive }) =>
-              `rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-accent-500/15 text-accent-400"
-                  : "text-white/60 hover:bg-white/5 hover:text-white/90"
-              }`
-            }
+            className={navLinkClass}
           >
             {link.label}
           </NavLink>
         ))}
-        {user?.role === "admin" && (
-          <>
+        {user?.role === "admin" &&
+          adminLinks.map((link) => (
             <NavLink
-              to="/admin"
+              key={link.to}
+              to={link.to}
               onClick={() => setMenuOpen(false)}
-              className={({ isActive }) =>
-                `rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-accent-500/15 text-accent-400"
-                    : "text-white/60 hover:bg-white/5 hover:text-white/90"
-                }`
-              }
+              className={navLinkClass}
             >
-              Admin
+              {link.label}
             </NavLink>
-            <NavLink
-              to="/spend"
-              onClick={() => setMenuOpen(false)}
-              className={({ isActive }) =>
-                `rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-accent-500/15 text-accent-400"
-                    : "text-white/60 hover:bg-white/5 hover:text-white/90"
-                }`
-              }
-            >
-              Spend
-            </NavLink>
-          </>
-        )}
+          ))}
 
         <div className="mt-4 flex flex-col gap-2 border-t border-white/10 pt-4 md:mt-auto">
           {user && (

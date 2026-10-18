@@ -266,3 +266,27 @@ export interface ChatResponse {
   files: GeneratedFile[];
   history: ChatMessage[];
 }
+
+export interface ProviderStatus {
+  id: string;
+  name: string;
+  configured: boolean;
+  detail: string;
+  missing: string[];
+}
+
+export interface ChannelConnectionStatus {
+  id: string;
+  name: string;
+  configured: boolean;
+  missing: string[];
+  connected: boolean | null;
+  channel_title: string | null;
+  channel_thumbnail_url: string | null;
+  error: string | null;
+}
+
+export interface ConnectionsStatus {
+  providers: ProviderStatus[];
+  youtube_channels: ChannelConnectionStatus[];
+}

@@ -49,6 +49,34 @@ def db_engine(test_db_url):
     engine.dispose()
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    """app/rate_limit.py keys its fixed-window counters by client IP, and
+    every starlette TestClient reports the same host ("testclient") — so
+    without this, signup/login tests sharing a pytest session share ONE
+    counter across all of them and trip the real 429 after
+    max_requests, regardless of which test is running. That's a test
+    environment gap, not production behavior to change: production really
+    is meant to rate-limit repeated requests from one IP. This only resets
+    the counters between tests so each test starts with a clean window,
+    the same way db_session's rollback keeps Postgres state from leaking
+    between tests. Scoped to just the `ratelimit:*` keys it owns — never
+    touches anything else that might live on the same Redis instance."""
+    import redis
+    from app.config import settings
+
+    try:
+        conn = redis.from_url(settings.redis_url)
+        keys = list(conn.scan_iter("ratelimit:*"))
+        if keys:
+            conn.delete(*keys)
+    except redis.RedisError:
+        # No reachable Redis in this environment — the rate limiter itself
+        # fails open in that case too, so there's nothing to reset.
+        pass
+    yield
+
+
 @pytest.fixture
 def db_session(db_engine) -> Session:
     """One test = one transaction, rolled back at the end, so tests don't

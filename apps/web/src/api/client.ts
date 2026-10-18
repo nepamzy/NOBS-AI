@@ -7,6 +7,7 @@ import type {
   ChatMessage,
   ChatResponse,
   Clip,
+  ConnectionsStatus,
   CostCategory,
   CostEntry,
   CostStatus,
@@ -276,4 +277,6 @@ export const api = {
   listClips: (sourceVideoId: string) =>
     request<Clip[]>(`/source-videos/${sourceVideoId}/clips`),
   publishClip: (clipId: string) => request<Clip>(`/clips/${clipId}/publish`, { method: "POST" }),
+
+  getConnectionsStatus: () => request<ConnectionsStatus>("/connections/status"),
 };

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, errorMessage, resolveStorageUrl } from "../api/client";
 import type { Clip, ClipJobStage, SourceVideo } from "../api/types";
 import { LoadingState } from "../components/LoadingState";
+import { Button, EmptyState, ErrorState, Panel, StatusPill, type Tone } from "../components/ui";
 
 const STAGE_LABELS: Record<ClipJobStage, string> = {
   uploaded: "Queued",
@@ -10,6 +11,15 @@ const STAGE_LABELS: Record<ClipJobStage, string> = {
   extracting: "Cutting clips",
   completed: "Done",
   failed: "Failed",
+};
+
+const STAGE_TONES: Record<ClipJobStage, Tone> = {
+  uploaded: "info",
+  transcribing: "info",
+  selecting_clips: "info",
+  extracting: "info",
+  completed: "success",
+  failed: "error",
 };
 
 const ACCEPTED_TYPES = "video/mp4,video/quicktime,video/x-matroska,video/webm";
@@ -81,23 +91,28 @@ export function Clips() {
           onChange={handleFileSelect}
           className="hidden"
         />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="shrink-0 rounded-md bg-accent-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
+        <Button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="shrink-0">
           {uploading ? "Uploading…" : "Upload a video"}
-        </button>
+        </Button>
       </div>
 
-      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+      {error && (
+        <div className="mt-3">
+          <ErrorState message={error} />
+        </div>
+      )}
       {loadError && (
-        <p className="mt-3 text-sm text-red-400">Couldn't load your uploads: {loadError}</p>
+        <div className="mt-3">
+          <ErrorState message={`Couldn't load your uploads: ${loadError}`} />
+        </div>
       )}
 
       <div className="mt-8 flex flex-col gap-6">
         {!loadError && sourceVideos.length === 0 && (
-          <p className="text-sm text-white/40">No videos uploaded yet.</p>
+          <EmptyState
+            title="No videos uploaded yet."
+            description="Upload an already-finished video and it'll be transcribed, clipped, and queued for your second channel."
+          />
         )}
         {sourceVideos.map((sourceVideo) => (
           <SourceVideoCard key={sourceVideo.id} sourceVideo={sourceVideo} onChange={refresh} />
@@ -142,22 +157,12 @@ function SourceVideoCard({
   }
 
   return (
-    <div className="rounded-lg border border-white/10 bg-white/5 p-5">
+    <Panel>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-white">{sourceVideo.original_filename}</p>
           <div className="mt-1 flex items-center gap-2">
-            <span
-              className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                sourceVideo.stage === "completed"
-                  ? "bg-emerald-500/15 text-emerald-400"
-                  : sourceVideo.stage === "failed"
-                    ? "bg-red-500/15 text-red-400"
-                    : "bg-accent-500/15 text-accent-400"
-              }`}
-            >
-              {STAGE_LABELS[sourceVideo.stage]}
-            </span>
+            <StatusPill tone={STAGE_TONES[sourceVideo.stage]} label={STAGE_LABELS[sourceVideo.stage]} />
           </div>
         </div>
         <button
@@ -191,7 +196,7 @@ function SourceVideoCard({
           ))}
         </ul>
       )}
-    </div>
+    </Panel>
   );
 }
 
@@ -233,17 +238,11 @@ function ClipRow({ clip, onPublished }: { clip: Clip; onPublished: () => void })
             </a>
           )}
           {clip.youtube_published ? (
-            <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-400">
-              Published
-            </span>
+            <StatusPill tone="success" label="Published" />
           ) : clip.clip_path ? (
-            <button
-              onClick={handlePublish}
-              disabled={publishing}
-              className="rounded-md bg-emerald-500 px-3 py-1 text-xs font-semibold text-black disabled:opacity-50"
-            >
+            <Button variant="success" size="sm" onClick={handlePublish} disabled={publishing}>
               {publishing ? "Publishing…" : "Publish"}
-            </button>
+            </Button>
           ) : (
             <span className="text-xs text-white/40">Rendering…</span>
           )}
