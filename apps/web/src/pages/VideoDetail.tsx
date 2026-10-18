@@ -47,6 +47,7 @@ export function VideoDetail() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [approving, setApproving] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  const [continuing, setContinuing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("scenes");
@@ -93,6 +94,19 @@ export function VideoDetail() {
       setError(err instanceof ApiError ? err.message : String(err));
     } finally {
       setRestarting(false);
+    }
+  }
+
+  async function handleContinue() {
+    if (!videoId || !video) return;
+    setContinuing(true);
+    setError(null);
+    try {
+      setVideo(await api.continueVideo(videoId));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setContinuing(false);
     }
   }
 
@@ -159,9 +173,16 @@ export function VideoDetail() {
           <h1 className="font-heading text-2xl font-semibold text-white">{video.topic}</h1>
           <StatusPill tone={tone} label={label} />
         </div>
-        <Button variant="secondary" size="sm" onClick={handleRestart} disabled={restarting}>
-          {restarting ? "Restarting…" : "Restart production"}
-        </Button>
+        <div className="flex gap-2">
+          {video.stage === "failed" && (
+            <Button variant="secondary" size="sm" onClick={handleContinue} disabled={continuing}>
+              {continuing ? "Continuing…" : "Continue"}
+            </Button>
+          )}
+          <Button variant="secondary" size="sm" onClick={handleRestart} disabled={restarting}>
+            {restarting ? "Restarting…" : "Restart production"}
+          </Button>
+        </div>
       </div>
       <p className="mt-1 text-sm text-white/50">
         Target: {Math.round(video.target_duration_seconds / 60)} min

@@ -6,7 +6,7 @@ import { DurationPicker } from "./DurationPicker";
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 function emptyForm() {
-  return { dayOfWeek: 0, time: "16:00", topic: "", minutes: 5 };
+  return { dayOfWeek: 0, time: "16:00", topic: "", seconds: 300 };
 }
 
 export function UploadSchedules({ projectId }: { projectId: string }) {
@@ -50,7 +50,7 @@ export function UploadSchedules({ projectId }: { projectId: string }) {
         day_of_week: form.dayOfWeek,
         trigger_time: form.time,
         topic: form.topic.trim(),
-        target_duration_seconds: form.minutes * 60,
+        target_duration_seconds: form.seconds,
       });
       setForm(emptyForm());
       setShowForm(false);
@@ -144,8 +144,8 @@ export function UploadSchedules({ projectId }: { projectId: string }) {
           />
 
           <DurationPicker
-            minutes={form.minutes}
-            onChange={(minutes) => setForm({ ...form, minutes })}
+            seconds={form.seconds}
+            onChange={(seconds) => setForm({ ...form, seconds })}
           />
 
           <button

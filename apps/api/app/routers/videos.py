@@ -1,3 +1,4 @@
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -257,6 +258,44 @@ def restart_video(
     db.refresh(video)
 
     enqueue_pipeline_start(video_id=video.id, run_research=True)
+    return video
+
+
+_CRASHED_AT = re.compile(r"Crashed at '([a-z_]+)'")
+_NOT_RESUMABLE = {PipelineStage.TOPIC, PipelineStage.COMPLETED, PipelineStage.FAILED}
+
+
+@router.post("/{video_id}/continue", response_model=VideoRead)
+def continue_video(
+    video_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> Video:
+    """Resume a FAILED video at the stage that crashed. Everything already
+    produced (research, script, approved storyboard, finished voiceovers and
+    clips) is kept; the crashed stage and everything after it run again.
+    Use Restart to start over from Topic instead."""
+    video = _owned_video_or_404(db, video_id, user)
+    if video.stage != PipelineStage.FAILED:
+        raise HTTPException(
+            status_code=409,
+            detail="Only a failed video can be continued. Use Restart to start over.",
+        )
+    match = _CRASHED_AT.search(video.stage_detail or "")
+    try:
+        resume_stage = PipelineStage(match.group(1)) if match else None
+    except ValueError:
+        resume_stage = None
+    if resume_stage is None or resume_stage in _NOT_RESUMABLE:
+        raise HTTPException(
+            status_code=409,
+            detail="Can't tell which stage failed, so this can't be continued. Use Restart.",
+        )
+
+    video.stage = resume_stage
+    video.stage_detail = ""
+    db.commit()
+    db.refresh(video)
+
+    enqueue_pipeline_start(video_id=video.id, run_research=False)
     return video
 
 

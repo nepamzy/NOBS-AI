@@ -28,7 +28,7 @@ export function CreateVideo() {
   const [showProjectPicker, setShowProjectPicker] = useState(false);
   const [contentType, setContentType] = useState<(typeof CONTENT_TYPES)[number]["id"] | null>(null);
   const [topic, setTopic] = useState("");
-  const [durationMinutes, setDurationMinutes] = useState(3);
+  const [durationSeconds, setDurationSeconds] = useState(180);
   const [voicePreset, setVoicePreset] = useState("");
   const [stylePreset, setStylePreset] = useState("");
   const [runResearch, setRunResearch] = useState(true);
@@ -40,7 +40,7 @@ export function CreateVideo() {
     api
       .getSettings()
       .then((s) => {
-        setDurationMinutes(s.default_duration_minutes);
+        setDurationSeconds(s.default_duration_minutes * 60);
         setVoicePreset(s.default_voice_preset);
         setStylePreset(s.default_style_preset);
       })
@@ -62,7 +62,7 @@ export function CreateVideo() {
       const video = await api.createVideo({
         project_id: targetProjectId,
         topic: finalTopic,
-        target_duration_seconds: durationMinutes * 60,
+        target_duration_seconds: durationSeconds,
         voice_preset: voicePreset,
         style_preset: stylePreset,
         run_research: runResearch,
@@ -191,7 +191,7 @@ export function CreateVideo() {
             <div className="mt-5 flex flex-col gap-4 border-t border-white/10 pt-5">
               <label className="flex flex-col gap-1.5">
                 <span className="text-sm text-white/70">Duration</span>
-                <DurationPicker minutes={durationMinutes} onChange={setDurationMinutes} />
+                <DurationPicker seconds={durationSeconds} onChange={setDurationSeconds} />
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-sm text-white/70">Voice</span>

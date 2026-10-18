@@ -16,6 +16,20 @@ export function ProjectDetail() {
   const [videosError, setVideosError] = useState<string | null>(null);
   const [restartingId, setRestartingId] = useState<string | null>(null);
   const [restartError, setRestartError] = useState<string | null>(null);
+  const [continuingId, setContinuingId] = useState<string | null>(null);
+
+  async function continueVideo(video: Video) {
+    setContinuingId(video.id);
+    setRestartError(null);
+    try {
+      const updated = await api.continueVideo(video.id);
+      setVideos((prev) => prev.map((v) => (v.id === updated.id ? updated : v)));
+    } catch (err) {
+      setRestartError(errorMessage(err));
+    } finally {
+      setContinuingId(null);
+    }
+  }
 
   async function restartVideo(video: Video) {
     const confirmed = window.confirm(
@@ -67,7 +81,17 @@ export function ProjectDetail() {
                 </div>
               </Panel>
             </Link>
-            <div className="mt-2 flex justify-end">
+            <div className="mt-2 flex justify-end gap-2">
+              {video.stage === "failed" && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => continueVideo(video)}
+                  disabled={continuingId === video.id}
+                >
+                  {continuingId === video.id ? "Continuing…" : "Continue"}
+                </Button>
+              )}
               <Button
                 variant="secondary"
                 size="sm"

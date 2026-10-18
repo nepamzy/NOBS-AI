@@ -152,6 +152,7 @@ export const api = {
   approveStoryboard: (id: string) =>
     request<Video>(`/videos/${id}/approve-storyboard`, { method: "POST" }),
   restartVideo: (id: string) => request<Video>(`/videos/${id}/restart`, { method: "POST" }),
+  continueVideo: (id: string) => request<Video>(`/videos/${id}/continue`, { method: "POST" }),
   updateScene: (videoId: string, sceneId: string, payload: Partial<Scene>) =>
     request<Scene>(`/videos/${videoId}/scenes/${sceneId}`, {
       method: "PATCH",

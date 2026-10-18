@@ -1,21 +1,30 @@
 import { useState } from "react";
 
-const PRESETS = [1, 3, 5, 10, 15];
+// Video length in seconds. Short options are for quick tests and clips.
+export const CREATE_DURATION_PRESETS = [5, 10, 15, 30, 60, 180, 300, 600, 900];
+export const MINUTE_DURATION_PRESETS = [60, 180, 300, 600, 900];
+
+function label(seconds: number): string {
+  if (seconds < 60) return `${seconds} sec`;
+  return `${seconds / 60} min`;
+}
 
 export function DurationPicker({
-  minutes,
+  seconds,
   onChange,
+  presets = CREATE_DURATION_PRESETS,
 }: {
-  minutes: number;
-  onChange: (minutes: number) => void;
+  seconds: number;
+  onChange: (seconds: number) => void;
+  presets?: number[];
 }) {
-  const [customOpen, setCustomOpen] = useState(!PRESETS.includes(minutes));
+  const [customOpen, setCustomOpen] = useState(!presets.includes(seconds));
 
   return (
     <div>
       <div className="flex flex-wrap gap-2">
-        {PRESETS.map((preset) => {
-          const selected = !customOpen && minutes === preset;
+        {presets.map((preset) => {
+          const selected = !customOpen && seconds === preset;
           return (
             <button
               key={preset}
@@ -30,7 +39,7 @@ export function DurationPicker({
                   : "border-white/10 bg-white/5 text-white/70 hover:border-white/20"
               }`}
             >
-              {preset} min
+              {label(preset)}
             </button>
           );
         })}
@@ -48,15 +57,18 @@ export function DurationPicker({
       </div>
 
       {customOpen && (
-        <input
-          type="number"
-          min={1}
-          max={60}
-          autoFocus
-          value={minutes}
-          onChange={(e) => onChange(Number(e.target.value))}
-          className="mt-2 w-32 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white"
-        />
+        <label className="mt-2 flex items-center gap-2 text-sm text-white/60">
+          <input
+            type="number"
+            min={5}
+            max={3600}
+            autoFocus
+            value={seconds}
+            onChange={(e) => onChange(Number(e.target.value))}
+            className="w-32 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white"
+          />
+          seconds
+        </label>
       )}
     </div>
   );

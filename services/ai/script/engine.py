@@ -124,7 +124,8 @@ class ScriptEngine:
                         f"Write a YouTube video script for topic: {topic!r}, "
                         f"targeting about {target_duration_seconds} seconds "
                         "of narration. Break it into numbered scenes, each "
-                        "5-12 seconds of narration with its own visual_prompt "
+                        "5-12 seconds of narration (for a target under 30 seconds, "
+                        "use one or two scenes) with its own visual_prompt "
                         "(a text-to-video generation prompt describing what "
                         "should appear on screen) and a transition "
                         "('cut', 'fade', or 'dissolve')." + research_context + lessons_context

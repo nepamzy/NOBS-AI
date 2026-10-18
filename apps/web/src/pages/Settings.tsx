@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api, ApiError, errorMessage } from "../api/client";
 import type { ConnectionTestResult, ProviderStatus, Settings as SettingsData } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
-import { DurationPicker } from "../components/DurationPicker";
+import { DurationPicker, MINUTE_DURATION_PRESETS } from "../components/DurationPicker";
 import { LoadingState } from "../components/LoadingState";
 import { StylePicker } from "../components/StylePicker";
 import { Button, ErrorState, Panel, StatusPill } from "../components/ui";
@@ -143,8 +143,11 @@ function PreferencesTab() {
         <label className="flex flex-col gap-1.5">
           <span className="text-sm text-white/70">Default duration</span>
           <DurationPicker
-            minutes={settings.default_duration_minutes}
-            onChange={(minutes) => setSettings({ ...settings, default_duration_minutes: minutes })}
+            seconds={settings.default_duration_minutes * 60}
+            presets={MINUTE_DURATION_PRESETS}
+            onChange={(seconds) =>
+              setSettings({ ...settings, default_duration_minutes: Math.max(1, Math.round(seconds / 60)) })
+            }
           />
         </label>
 
