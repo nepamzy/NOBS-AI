@@ -256,6 +256,8 @@ export const api = {
 
   listPackages: () => request<TokenPackage[]>("/payments/packages"),
 
+  health: () => request<{ status: string }>("/health"),
+
   sendChatMessage: (message: string, history: ChatMessage[], attachment?: ChatAttachment) =>
     request<ChatResponse>("/chat/messages", {
       method: "POST",
