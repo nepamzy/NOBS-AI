@@ -274,21 +274,28 @@ def continue_video(
     clips) is kept; the crashed stage and everything after it run again.
     Use Restart to start over from Topic instead."""
     video = _owned_video_or_404(db, video_id, user)
-    if video.stage != PipelineStage.FAILED:
-        raise HTTPException(
-            status_code=409,
-            detail="Only a failed video can be continued. Use Restart to start over.",
-        )
-    match = _CRASHED_AT.search(video.stage_detail or "")
-    try:
-        resume_stage = PipelineStage(match.group(1)) if match else None
-    except ValueError:
-        resume_stage = None
-    if resume_stage is None or resume_stage in _NOT_RESUMABLE:
-        raise HTTPException(
-            status_code=409,
-            detail="Can't tell which stage failed, so this can't be continued. Use Restart.",
-        )
+    if video.stage == PipelineStage.FAILED:
+        # Resume at the stage named in the failure message.
+        match = _CRASHED_AT.search(video.stage_detail or "")
+        try:
+            resume_stage = PipelineStage(match.group(1)) if match else None
+        except ValueError:
+            resume_stage = None
+        if resume_stage is None or resume_stage in _NOT_RESUMABLE:
+            raise HTTPException(
+                status_code=409,
+                detail="Can't tell which stage failed, so this can't be continued. Use Restart.",
+            )
+    else:
+        # A video stuck mid-stage (its worker was replaced by a deploy, so the
+        # job was lost without a failure being recorded) resumes where it is.
+        # Storyboard review and the terminal stages aren't a stuck run.
+        resume_stage = video.stage
+        if resume_stage in _NOT_RESUMABLE or resume_stage == PipelineStage.STORYBOARD_REVIEW:
+            raise HTTPException(
+                status_code=409,
+                detail="Only a failed or stuck video can be continued. Use Restart to start over.",
+            )
 
     video.stage = resume_stage
     video.stage_detail = ""

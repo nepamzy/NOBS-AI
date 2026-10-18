@@ -82,7 +82,7 @@ export function ProjectDetail() {
               </Panel>
             </Link>
             <div className="mt-2 flex justify-end gap-2">
-              {video.stage === "failed" && (
+              {!["topic", "storyboard_review", "completed"].includes(video.stage) && (
                 <Button
                   variant="secondary"
                   size="sm"

@@ -68,3 +68,31 @@ def test_continue_refuses_when_the_failed_stage_is_unknown(client, db_session, m
 def test_continue_unknown_video_is_404(client):
     response = client.post(f"/videos/{uuid.uuid4()}/continue")
     assert response.status_code == 404
+
+
+def test_continue_resumes_a_stuck_video_at_its_current_stage(client, db_session, monkeypatch):
+    queued = _queue(monkeypatch)
+    video = _make_video(client)
+    row = db_session.get(Video, uuid.UUID(video["id"]))
+    row.stage = PipelineStage.VIDEO_GENERATION
+    row.storyboard_approved = True
+    db_session.commit()
+    queued.clear()
+
+    response = client.post(f"/videos/{video['id']}/continue")
+
+    assert response.status_code == 200
+    assert response.json()["stage"] == "video_generation"
+    assert queued == [(video["id"], False)]
+
+
+def test_continue_refuses_storyboard_review(client, db_session, monkeypatch):
+    _queue(monkeypatch)
+    video = _make_video(client)
+    row = db_session.get(Video, uuid.UUID(video["id"]))
+    row.stage = PipelineStage.STORYBOARD_REVIEW
+    db_session.commit()
+
+    response = client.post(f"/videos/{video['id']}/continue")
+
+    assert response.status_code == 409

@@ -174,7 +174,7 @@ export function VideoDetail() {
           <StatusPill tone={tone} label={label} />
         </div>
         <div className="flex gap-2">
-          {video.stage === "failed" && (
+          {!["topic", "storyboard_review", "completed"].includes(video.stage) && (
             <Button variant="secondary" size="sm" onClick={handleContinue} disabled={continuing}>
               {continuing ? "Continuing…" : "Continue"}
             </Button>
