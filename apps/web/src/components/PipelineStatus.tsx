@@ -1,6 +1,7 @@
+import { Check } from "lucide-react";
 import type { PipelineStage } from "../api/types";
 
-const STAGE_ORDER: { key: PipelineStage; label: string }[] = [
+export const STAGE_ORDER: { key: PipelineStage; label: string }[] = [
   { key: "research", label: "Research" },
   { key: "script", label: "Script" },
   { key: "storyboard_review", label: "Storyboard" },
@@ -12,7 +13,7 @@ const STAGE_ORDER: { key: PipelineStage; label: string }[] = [
   { key: "thumbnail", label: "Thumbnail" },
 ];
 
-function stageIndexOf(stage: PipelineStage): number {
+export function stageIndexOf(stage: PipelineStage): number {
   if (stage === "completed") return STAGE_ORDER.length;
   if (stage === "topic") return -1;
   return STAGE_ORDER.findIndex((s) => s.key === stage);
@@ -43,6 +44,63 @@ export function PipelineStatus({ stage }: { stage: PipelineStage }) {
             }`}
           >
             {label}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** Circular-icon stage stepper — same real per-stage done/current/pending
+ * state as PipelineStatus above, in the connected-dots layout used on the
+ * Production Control Room screen (video.stage is the only source of
+ * truth; "failed" shows the stage it actually failed on, in red). */
+export function PipelineStepper({
+  stage,
+  failed,
+}: {
+  stage: PipelineStage;
+  failed?: boolean;
+}) {
+  return (
+    <ol className="flex flex-wrap items-start gap-x-1 gap-y-4">
+      {STAGE_ORDER.map(({ key, label }, i) => {
+        const status = stageStatus(key, stage);
+        const isFailedHere = failed && status === "current";
+        return (
+          <li key={key} className="flex items-center">
+            <div className="flex flex-col items-center gap-1.5">
+              <span
+                className={`flex h-9 w-9 items-center justify-center rounded-full border-2 ${
+                  isFailedHere
+                    ? "border-red-500 bg-red-500/15 text-red-400"
+                    : status === "done"
+                      ? "border-emerald-500 bg-emerald-500/15 text-emerald-400"
+                      : status === "current"
+                        ? "border-accent-400 bg-accent-500/20 text-accent-300 shadow-[0_0_12px_-1px_var(--color-accent-500)]"
+                        : "border-white/15 text-white/30"
+                }`}
+              >
+                {status === "done" ? <Check size={16} /> : <span className="h-2 w-2 rounded-full bg-current" />}
+              </span>
+              <span className="text-center text-[11px] leading-tight text-white/60">{label}</span>
+              <span
+                className={`text-[10px] font-medium ${
+                  isFailedHere
+                    ? "text-red-400"
+                    : status === "done"
+                      ? "text-emerald-400"
+                      : status === "current"
+                        ? "text-accent-300"
+                        : "text-white/30"
+                }`}
+              >
+                {isFailedHere ? "Failed" : status === "done" ? "Done" : status === "current" ? "In Progress" : "Pending"}
+              </span>
+            </div>
+            {i < STAGE_ORDER.length - 1 && (
+              <span className="mx-1 mb-6 h-px w-6 shrink-0 bg-white/15 sm:w-10" />
+            )}
           </li>
         );
       })}

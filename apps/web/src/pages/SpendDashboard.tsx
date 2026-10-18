@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { api, ApiError, errorMessage } from "../api/client";
 import type { BillingType, CostCategory, CostEntry, CostStatus, SpendSummary } from "../api/types";
 import { LoadingState } from "../components/LoadingState";
 import { Button, ErrorState, Panel, StatusPill, type Tone } from "../components/ui";
+
+const DONUT_COLORS = ["#a78bfa", "#8b5cf6", "#7c3aed", "#c4b5fd", "#6d28d9", "#ddd6fe"];
 
 const CATEGORY_LABELS: Record<CostCategory, string> = {
   gpu: "GPU",
@@ -103,7 +106,6 @@ export function SpendDashboard() {
     .map((b) => ({ ...b, total: b.actual_usd || b.estimated_usd }))
     .filter((b) => b.total > 0)
     .sort((a, b) => b.total - a.total);
-  const maxTotal = Math.max(...breakdown.map((b) => b.total), 1);
 
   const sortedEntries = [...spend.entries].sort((a, b) => {
     const order: Record<CostStatus, number> = { active: 0, pending: 1, stopped: 2 };
@@ -126,28 +128,70 @@ export function SpendDashboard() {
       </div>
 
       {breakdown.length > 0 && (
-        <div className="mt-8">
-          <h2 className="font-heading text-sm font-semibold uppercase tracking-wide text-white/50">
-            By category
-          </h2>
-          <div className="mt-3 flex flex-col gap-2">
-            {breakdown.map((b) => (
-              <div key={b.category} className="flex items-center gap-3">
-                <span className="w-32 shrink-0 truncate text-sm text-white/70">
-                  {CATEGORY_LABELS[b.category]}
-                </span>
-                <div className="h-5 flex-1 rounded-sm bg-white/5">
-                  <div
-                    className="h-full rounded-sm bg-accent-500"
-                    style={{ width: `${Math.max((b.total / maxTotal) * 100, 3)}%` }}
-                  />
-                </div>
-                <span className="w-16 shrink-0 text-right text-sm text-white/80">
-                  ${b.total.toFixed(2)}
-                </span>
+        <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Panel>
+            <h2 className="font-heading text-sm font-semibold uppercase tracking-wide text-white/50">
+              Cost Breakdown
+            </h2>
+            <div className="mt-2 grid grid-cols-[1fr_140px] items-center gap-3">
+              <ul className="flex flex-col gap-2">
+                {breakdown.map((b, i) => {
+                  const total = breakdown.reduce((sum, x) => sum + x.total, 0);
+                  const share = total > 0 ? Math.round((b.total / total) * 100) : 0;
+                  return (
+                    <li key={b.category} className="flex items-center gap-2 text-sm">
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                        style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }}
+                      />
+                      <span className="flex-1 truncate text-white/70">{CATEGORY_LABELS[b.category]}</span>
+                      <span className="shrink-0 text-white/50">{share}%</span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="h-36">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={breakdown} dataKey="total" nameKey="category" innerRadius={38} outerRadius={60} paddingAngle={2}>
+                      {breakdown.map((b, i) => (
+                        <Cell key={b.category} fill={DONUT_COLORS[i % DONUT_COLORS.length]} stroke="none" />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value, name) => [
+                        `$${Number(value).toFixed(2)}`,
+                        CATEGORY_LABELS[name as CostCategory],
+                      ]}
+                      contentStyle={{ background: "#11172b", border: "1px solid #ffffff1a", borderRadius: 8, fontSize: 12 }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
-            ))}
-          </div>
+            </div>
+          </Panel>
+
+          <Panel>
+            <h2 className="font-heading text-sm font-semibold uppercase tracking-wide text-white/50">
+              Recent Activity
+            </h2>
+            <ul className="mt-2 flex flex-col gap-3">
+              {spend.entries
+                .slice()
+                .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime())
+                .slice(0, 5)
+                .map((entry) => (
+                  <li key={entry.id} className="flex items-center justify-between text-sm">
+                    <div className="min-w-0">
+                      <p className="truncate text-white/80">{entry.service}</p>
+                      <p className="text-xs text-white/40">{new Date(entry.occurred_at).toLocaleDateString()}</p>
+                    </div>
+                    <span className="shrink-0 text-white/60">${effectiveCost(entry).toFixed(2)}</span>
+                  </li>
+                ))}
+              {spend.entries.length === 0 && <p className="text-sm text-white/40">No activity logged yet.</p>}
+            </ul>
+          </Panel>
         </div>
       )}
 

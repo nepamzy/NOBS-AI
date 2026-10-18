@@ -1,9 +1,21 @@
+import { Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, errorMessage, resolveStorageUrl } from "../api/client";
 import type { ChatAttachment, ChatMessage, GeneratedFile } from "../api/types";
 import { MicButton } from "../components/MicButton";
-import { ErrorState } from "../components/ui";
+import { ErrorState, Panel } from "../components/ui";
 import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis";
+
+// Real prompts, not decorative — each one is something the assistant's
+// actual tool set (list/get projects & videos, regenerate a scene, approve
+// a storyboard — see services/ai/assistant) can genuinely do.
+const QUICK_SUGGESTIONS = [
+  "Create a video",
+  "Show my latest project status",
+  "Help me improve this script",
+  "Which videos need attention?",
+  "Open my most recent project",
+];
 
 // Chat history otherwise lives only in this component's React state —
 // nothing wipes it on purpose, but some browsers (especially mobile)
@@ -148,15 +160,11 @@ export function Assistant() {
 
   return (
     // Height leaves room for main's padding, plus the mobile top bar below md.
-    <div className="flex h-[calc(100dvh-7rem)] max-w-2xl flex-col md:h-[calc(100dvh-4rem)]">
+    <div className="flex h-[calc(100dvh-7rem)] max-w-5xl flex-col md:h-[calc(100dvh-4rem)]">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="font-heading text-2xl font-semibold text-white">Assistant</h1>
-          <p className="mt-2 text-white/60">
-            Ask it to create a video, check on one, tweak a scene, or approve a storyboard. Signed
-            in as admin, it can also research anything, help with code, and look at an image or
-            PDF you attach.
-          </p>
+          <h1 className="font-heading text-2xl font-semibold text-white">AI Assistant</h1>
+          <p className="mt-2 text-white/60">Chat with your AI assistant to manage your videos and projects.</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {history.length > 0 && (
@@ -195,12 +203,40 @@ export function Assistant() {
         </div>
       </div>
 
-      <div className="mt-6 flex-1 space-y-4 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-4">
+      <div className="mt-6 flex min-h-0 flex-1 gap-5">
+        <div className="hidden w-56 shrink-0 lg:block">
+          <Panel>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-white/50">
+              Quick Suggestions
+            </h3>
+            <div className="mt-3 flex flex-col gap-2">
+              {QUICK_SUGGESTIONS.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  disabled={sending}
+                  onClick={() => sendMessage(s, null)}
+                  className="rounded-md border border-white/10 px-3 py-2 text-left text-xs text-white/70 transition-colors hover:border-white/20 hover:text-white disabled:opacity-40"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </Panel>
+        </div>
+
+        <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex-1 space-y-4 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-4">
         {history.length === 0 && (
-          <p className="text-sm text-white/40">
-            Try: "What videos do I have in progress?", "Explain how OAuth works", or attach a
-            screenshot and ask about it.
-          </p>
+          <div className="flex items-start gap-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-accent-600 to-accent-400">
+              <Sparkles size={14} className="text-white" />
+            </span>
+            <div className="max-w-[80%] rounded-lg bg-white/5 px-3 py-2 text-sm text-white/90">
+              <p>Hi! I'm your NOBS AI assistant. I can help you create videos, check project status, improve your scripts, and more.</p>
+              <p className="mt-2">What would you like to do today?</p>
+            </div>
+          </div>
         )}
         {history.map((message, i) => {
           const text = visibleText(message.content);
@@ -307,6 +343,8 @@ export function Assistant() {
           Send
         </button>
       </form>
+        </div>
+      </div>
     </div>
   );
 }

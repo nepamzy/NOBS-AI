@@ -1,23 +1,33 @@
+import { Film, Play, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, errorMessage, resolveStorageUrl } from "../api/client";
 import type { Project, Video } from "../api/types";
 import { LoadingState } from "../components/LoadingState";
 import { PipelineProgress } from "../components/PipelineStatus";
-import { EmptyState, ErrorState, Panel, StatusPill, type Tone } from "../components/ui";
+import { EmptyState, ErrorState, Panel, StatusPill } from "../components/ui";
+import { isBlocked, videoStatus } from "../lib/videoStatus";
 
-type StatusFilter = "all" | "completed" | "processing" | "failed";
+type FilterKey = "all" | "published" | "drafts" | "processing" | "needs_attention";
 
-function videoTone(video: Video): { tone: Tone; label: string } {
-  if (video.stage === "completed") return { tone: "success", label: "Completed" };
-  if (video.stage === "failed") return { tone: "error", label: "Failed" };
-  return { tone: "info", label: "Processing" };
+const FILTERS: { key: FilterKey; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "published", label: "Published" },
+  { key: "drafts", label: "Drafts" },
+  { key: "processing", label: "Processing" },
+  { key: "needs_attention", label: "Needs Attention" },
+];
+
+function filterKeyOf(video: Video): FilterKey {
+  if (isBlocked(video)) return "needs_attention";
+  if (video.stage === "completed") return video.youtube_published ? "published" : "drafts";
+  return "processing";
 }
 
-function statusFilterOf(video: Video): StatusFilter {
-  if (video.stage === "completed") return "completed";
-  if (video.stage === "failed") return "failed";
-  return "processing";
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 export function VideoLibrary() {
@@ -27,7 +37,7 @@ export function VideoLibrary() {
   // video_id -> thumbnail URL, or null once we've confirmed there isn't one.
   const [thumbnails, setThumbnails] = useState<Record<string, string | null>>({});
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [filter, setFilter] = useState<FilterKey>("all");
 
   useEffect(() => {
     api
@@ -76,10 +86,10 @@ export function VideoLibrary() {
     if (!videos) return [];
     const q = search.trim().toLowerCase();
     return videos
-      .filter((v) => (statusFilter === "all" ? true : statusFilterOf(v) === statusFilter))
+      .filter((v) => (filter === "all" ? true : filterKeyOf(v) === filter))
       .filter((v) => (q ? v.topic.toLowerCase().includes(q) : true))
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  }, [videos, search, statusFilter]);
+  }, [videos, search, filter]);
 
   if (error) return <ErrorState message={`Couldn't load the video library: ${error}`} />;
   if (!videos) return <LoadingState />;
@@ -87,30 +97,34 @@ export function VideoLibrary() {
   return (
     <div>
       <h1 className="font-heading text-2xl font-semibold text-white">Video Library</h1>
-      <p className="mt-1 text-white/60">
-        Every video across every project — real output files only, nothing here is a guess at
-        what's finished.
-      </p>
+      <p className="mt-1 text-white/60">Browse and manage all your generated videos.</p>
 
-      <div className="mt-6 flex flex-wrap gap-3">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by topic…"
-          aria-label="Search videos by topic"
-          className="min-w-0 flex-1 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30"
-        />
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-          aria-label="Filter by status"
-          className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
-        >
-          <option value="all">All statuses</option>
-          <option value="completed">Completed</option>
-          <option value="processing">Processing</option>
-          <option value="failed">Failed</option>
-        </select>
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                filter === f.key
+                  ? "bg-gradient-to-r from-accent-600 to-accent-400 text-white"
+                  : "border border-white/10 text-white/50 hover:text-white"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="relative">
+          <Search size={14} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-white/40" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search videos…"
+            aria-label="Search videos by topic"
+            className="w-56 rounded-full border border-white/10 bg-white/5 py-1.5 pr-3 pl-8 text-sm text-white placeholder:text-white/30"
+          />
+        </div>
       </div>
 
       {videos.length === 0 && (
@@ -130,7 +144,7 @@ export function VideoLibrary() {
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {filtered.map((video) => {
-          const { tone, label } = videoTone(video);
+          const { tone, label } = videoStatus(video);
           const project = projectById.get(video.project_id);
           const thumb = thumbnails[video.id];
 
@@ -138,7 +152,7 @@ export function VideoLibrary() {
             <Panel key={video.id} className="flex flex-col gap-3 p-0 overflow-hidden">
               <Link
                 to={`/videos/${video.id}`}
-                className="block aspect-video w-full bg-black/40"
+                className="relative block aspect-video w-full bg-black/40"
                 aria-label={`Open ${video.topic}`}
               >
                 {thumb ? (
@@ -148,10 +162,19 @@ export function VideoLibrary() {
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center text-white/20">
-                    {video.stage === "completed" ? "No thumbnail available" : "Not ready yet"}
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-white/20">
+                    <Film size={22} />
+                    <span className="text-xs">{video.stage === "completed" ? "No thumbnail" : "Not ready yet"}</span>
                   </div>
                 )}
+                {thumb && (
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-opacity hover:bg-black/30 hover:opacity-100">
+                    <Play size={28} className="text-white" fill="white" />
+                  </span>
+                )}
+                <span className="absolute right-1.5 bottom-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[11px] text-white">
+                  {formatDuration(video.target_duration_seconds)}
+                </span>
               </Link>
 
               <div className="flex flex-1 flex-col gap-2 px-4 pb-4">
@@ -165,7 +188,7 @@ export function VideoLibrary() {
                   <StatusPill tone={tone} label={label} />
                 </div>
 
-                {video.stage !== "completed" && video.stage !== "failed" && (
+                {video.stage !== "completed" && !isBlocked(video) && (
                   <PipelineProgress stage={video.stage} />
                 )}
 
