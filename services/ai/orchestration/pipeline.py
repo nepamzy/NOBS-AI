@@ -78,6 +78,10 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
         return
 
     if stage == PipelineStage.RESEARCH:
+        # Release the DB connection before the (slow) LLM call. Supabase closes
+        # connections that sit idle, and the write after the call then failed
+        # with "SSL error: unexpected eof" after paid research had already run.
+        db.commit()
         try:
             result = ctx.research_engine.run(video.topic)
         except ApprovalRequiredError as exc:
@@ -129,6 +133,7 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
         )
         lessons = "\n".join(f"- {f.note}" for f in reversed(recent_feedback))
 
+        db.commit()  # see RESEARCH: don't hold an idle DB connection during the LLM call
         try:
             draft = ctx.script_engine.generate(
                 video.topic, video.target_duration_seconds, research_result, lessons
@@ -240,6 +245,7 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
             if scene.id in done:
                 continue
             output_path = f"{ctx.storage_root}/{video.id}/voiceovers/{scene.id}.mp3"
+            db.commit()  # see RESEARCH: voice calls can take a while
             try:
                 result = ctx.voice_engine.synthesize(
                     scene.narration, video.voice_preset, output_path
@@ -301,6 +307,7 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
                 visual_prompt=scene.visual_prompt,
                 duration_seconds=scene.duration_seconds,
             )
+            db.commit()  # see RESEARCH: GPU clips take minutes; never hold the connection idle
             try:
                 result = ctx.video_engine.generate_clip(request, output_path)
             except ApprovalRequiredError as exc:
