@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     # e.g. {"warm-narrator": "my_cloned_voice.wav"}. Only used when
     # voice_provider=chatterbox.
     chatterbox_voice_map: str = "{}"
+    # TEST ONLY. When true, the pipeline skips narration entirely: no voice
+    # engine call, no audio mux, no captions. Video clips are still generated,
+    # stitched, and stored so a silent cut can be reviewed. Never enable this
+    # for a real production video. Off by default.
+    pipeline_test_no_audio: bool = False
     elevenlabs_api_key: str = ""
     # JSON object mapping our voice_preset ids (services/voice/catalog.py)
     # to real ElevenLabs voice_ids, e.g. {"warm-narrator": "<voice_id>"}.

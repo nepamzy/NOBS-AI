@@ -372,6 +372,8 @@ function SystemTab() {
         </div>
       )}
 
+      <TestModeCard />
+
       <PackagesPreview />
 
       <Panel>
@@ -382,6 +384,68 @@ function SystemTab() {
         </p>
       </Panel>
     </div>
+  );
+}
+
+function TestModeCard() {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .getPipelineTestMode()
+      .then((res) => setEnabled(res.enabled))
+      .catch(() => setError("Could not load test mode."));
+  }, []);
+
+  async function toggle() {
+    if (enabled === null) return;
+    const next = !enabled;
+    if (
+      next &&
+      !window.confirm(
+        "Turn on test mode? Every new video will be made WITHOUT narration, audio, or captions until you turn it off."
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.setPipelineTestMode(next);
+      setEnabled(res.enabled);
+    } catch {
+      setError("Could not update test mode.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Panel className="flex items-center justify-between gap-3">
+      <div>
+        <p className="text-sm text-white">Test mode (silent videos)</p>
+        <p className="mt-1 text-xs text-white/40">
+          When on, new videos skip narration, audio, music, and captions. Scenes are still
+          generated and joined. For testing only.
+        </p>
+        {error && <p className="mt-1 text-xs text-red-300">{error}</p>}
+      </div>
+      <div className="flex items-center gap-2">
+        {enabled === null && <StatusPill tone="neutral" label="Loading…" />}
+        {enabled === true && <StatusPill tone="error" label="ON — silent" />}
+        {enabled === false && <StatusPill tone="success" label="OFF — normal" />}
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={toggle}
+          disabled={busy || enabled === null}
+        >
+          {enabled ? "Turn off" : "Turn on"}
+        </Button>
+      </div>
+    </Panel>
   );
 }
 

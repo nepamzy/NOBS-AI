@@ -13,7 +13,9 @@ from services.video.factory import get_video_engine
 from services.voice.factory import get_voice_engine
 
 
-def _build_context() -> PipelineContext:
+def _build_context(db) -> PipelineContext:
+    from app.pipeline_test_mode import get_enabled
+
     return PipelineContext(
         research_engine=ResearchEngine(
             settings.llm_provider, settings.llm_api_key, settings.llm_model
@@ -33,6 +35,7 @@ def _build_context() -> PipelineContext:
             settings.local_wan_api_url,
         ),
         storage_root=settings.local_storage_root,
+        test_no_audio=get_enabled(db),
         music_library_path=settings.music_library_path,
         storage_backend=get_storage_backend(
             settings.storage_backend,
@@ -105,7 +108,7 @@ def advance_pipeline(video_id: str, run_research: bool) -> str:
         if video is None:
             return f"video {video_id} not found"
 
-        ctx = _build_context()
+        ctx = _build_context(db)
         terminal = {PipelineStage.COMPLETED, PipelineStage.FAILED}
         for _ in range(_MAX_STAGES_PER_JOB):
             if video.stage in terminal:

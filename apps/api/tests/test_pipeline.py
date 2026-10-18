@@ -631,3 +631,18 @@ def test_compliance_check_blocks_near_duplicate_title_for_same_owner(db_session)
     )
     assert report.passed is False
     assert len(report.blockers) == 1
+
+
+def test_test_no_audio_mode_skips_voice_engine_and_voiceovers(db_session):
+    # TEST ONLY path (settings.pipeline_test_no_audio): narration is skipped
+    # entirely, so the voice engine is never called and no Voiceover rows
+    # are written. Video generation proceeds from the script's estimates.
+    video, ctx, fake_voice, _fake_video = _advance_to_voice(db_session)
+    ctx.test_no_audio = True
+
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VOICE -> VIDEO_GENERATION
+
+    assert video.stage.value == "video_generation"
+    assert fake_voice.calls == []
+    assert db_session.query(Voiceover).filter(Voiceover.video_id == video.id).count() == 0
+    assert "TEST MODE" in video.stage_detail

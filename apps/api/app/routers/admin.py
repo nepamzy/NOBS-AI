@@ -10,6 +10,8 @@ from app.auth.security import generate_pin_code, hash_lookup_value
 from app.db import get_db
 from app.models.auth import AuthSession, SignupPin
 from app.models.enums import UserRole
+from app.pipeline_test_mode import get_enabled as get_test_mode
+from app.pipeline_test_mode import set_enabled as set_test_mode
 from app.models.user import User
 from app.schemas.auth import SignupPinRead, UserRead
 
@@ -99,6 +101,32 @@ def grant_tokens(
     db.commit()
     db.refresh(user)
     return user
+
+
+class PipelineTestModeRead(BaseModel):
+    enabled: bool
+
+
+class PipelineTestModeUpdate(BaseModel):
+    enabled: bool
+
+
+@router.get("/pipeline-test-mode", response_model=PipelineTestModeRead)
+def read_pipeline_test_mode(
+    db: Session = Depends(get_db), _admin: User = Depends(require_admin)
+) -> PipelineTestModeRead:
+    return PipelineTestModeRead(enabled=get_test_mode(db))
+
+
+@router.put("/pipeline-test-mode", response_model=PipelineTestModeRead)
+def write_pipeline_test_mode(
+    payload: PipelineTestModeUpdate,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+) -> PipelineTestModeRead:
+    """TEST ONLY. While on, every new video is made without narration, audio,
+    or captions. Read at the start of each worker job."""
+    return PipelineTestModeRead(enabled=set_test_mode(db, payload.enabled))
 
 
 def _get_manageable_user(db: Session, user_id: uuid.UUID) -> User:

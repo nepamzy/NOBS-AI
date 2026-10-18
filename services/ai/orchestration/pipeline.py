@@ -37,6 +37,9 @@ class PipelineContext:
     # services/storage. Defaults to a no-op (keeps the local path) so every
     # existing test/call site that doesn't care about this keeps working.
     storage_backend: StorageBackend = field(default_factory=LocalStorageBackend)
+    # TEST ONLY — see settings.pipeline_test_no_audio. Skips narration, audio
+    # mux, and captions so a silent video can be reviewed. Never production.
+    test_no_audio: bool = False
 
 
 class PipelineBlocked(RuntimeError):
@@ -216,6 +219,14 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
         return
 
     if stage == PipelineStage.VOICE:
+        if ctx.test_no_audio:
+            # TEST MODE: no narration. Scene durations stay at the script's
+            # estimate, and video generation uses those.
+            video.stage = PipelineStage.VIDEO_GENERATION
+            video.stage_detail = "TEST MODE: narration skipped"
+            video.stage_progress_percent = 0
+            db.commit()
+            return
         script = db.query(Script).filter(Script.video_id == video.id).one()
         scenes = script.scenes
         done = {v.scene_id for v in db.query(Voiceover).filter(Voiceover.video_id == video.id)}
@@ -343,7 +354,11 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
             v.scene_id: v for v in db.query(Voiceover).filter(Voiceover.video_id == video.id)
         }
 
-        missing = [s.order for s in scenes if s.id not in clips or s.id not in voiceovers]
+        missing = [
+            s.order
+            for s in scenes
+            if s.id not in clips or (not ctx.test_no_audio and s.id not in voiceovers)
+        ]
         if missing:
             _block(
                 video,
@@ -360,11 +375,16 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
             scene_paths = []
             for scene in scenes:
                 clip = clips[scene.id]
+                conformed_path = str(output_dir / f"{scene.id}_conformed.mp4")
+                if ctx.test_no_audio:
+                    # TEST MODE: conform to the script's scene length, no audio.
+                    conform_clip_to_duration(clip.clip_path, scene.duration_seconds, conformed_path)
+                    scene_paths.append(conformed_path)
+                    continue
                 voiceover = voiceovers[scene.id]
                 # Conform each clip to its OWN scene's real voiceover length
                 # before concatenation (trim or hold the last frame — never a
                 # speed change) so drift can't accumulate across scenes.
-                conformed_path = str(output_dir / f"{scene.id}_conformed.mp4")
                 conform_clip_to_duration(clip.clip_path, voiceover.duration_seconds, conformed_path)
                 muxed_path = str(output_dir / f"{scene.id}_muxed.mp4")
                 mux_voiceover(conformed_path, voiceover.audio_path, muxed_path)
@@ -389,7 +409,7 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
                 .limit(10)
                 .all()
             ]
-            track = pick_track(ctx.music_library_path, recently_used)
+            track = None if ctx.test_no_audio else pick_track(ctx.music_library_path, recently_used)
             if track is not None:
                 music_path = str(Path(ctx.music_library_path) / track)
                 mixed_path = str(output_dir / "final_with_music.mp4")
@@ -410,6 +430,13 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
         return
 
     if stage == PipelineStage.CAPTIONS:
+        if ctx.test_no_audio:
+            # TEST MODE: no narration, so there are no word timestamps to caption.
+            video.stage = PipelineStage.THUMBNAIL
+            video.stage_detail = ""
+            db.commit()
+            return
+
         from pathlib import Path
 
         from services.rendering.ffmpeg.assembler import AssemblyError, burn_in_captions
@@ -477,10 +504,14 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
 
         from services.rendering.ffmpeg.assembler import AssemblyError, extract_frame
 
-        total_duration = sum(
-            v.duration_seconds
-            for v in db.query(Voiceover).filter(Voiceover.video_id == video.id)
-        )
+        if ctx.test_no_audio:
+            script = db.query(Script).filter(Script.video_id == video.id).one()
+            total_duration = sum(s.duration_seconds for s in script.scenes)
+        else:
+            total_duration = sum(
+                v.duration_seconds
+                for v in db.query(Voiceover).filter(Voiceover.video_id == video.id)
+            )
 
         output_dir = Path(ctx.storage_root) / str(video.id) / "assembly"
         output_dir.mkdir(parents=True, exist_ok=True)

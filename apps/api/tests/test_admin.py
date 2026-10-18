@@ -114,3 +114,25 @@ def test_non_admin_cannot_manage_other_users(client, db_session):
         f"/admin/users/{target_id}/suspend", headers=_headers_for(attacker_token)
     )
     assert response.status_code == 403
+
+
+def test_pipeline_test_mode_defaults_off_and_admin_can_toggle(client):
+    assert client.get("/admin/pipeline-test-mode").json() == {"enabled": False}
+
+    on = client.put("/admin/pipeline-test-mode", json={"enabled": True})
+    assert on.status_code == 200
+    assert on.json() == {"enabled": True}
+    assert client.get("/admin/pipeline-test-mode").json() == {"enabled": True}
+
+    off = client.put("/admin/pipeline-test-mode", json={"enabled": False})
+    assert off.json() == {"enabled": False}
+
+
+def test_pipeline_test_mode_is_admin_only(client, db_session):
+    _id, guest_token = _signup_guest(client, db_session, code="654321", email="g2@example.com")
+    headers = _headers_for(guest_token)
+    assert client.get("/admin/pipeline-test-mode", headers=headers).status_code == 403
+    assert (
+        client.put("/admin/pipeline-test-mode", json={"enabled": True}, headers=headers).status_code
+        == 403
+    )

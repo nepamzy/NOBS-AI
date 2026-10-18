@@ -254,6 +254,13 @@ export const api = {
       body: JSON.stringify({ amount }),
     }),
 
+  getPipelineTestMode: () => request<{ enabled: boolean }>("/admin/pipeline-test-mode"),
+  setPipelineTestMode: (enabled: boolean) =>
+    request<{ enabled: boolean }>("/admin/pipeline-test-mode", {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    }),
+
   listPackages: () => request<TokenPackage[]>("/payments/packages"),
 
   health: () => request<{ status: string }>("/health"),
