@@ -31,7 +31,10 @@ from services.video.engine import ClipJobLost, SceneClipRequest, SceneClipResult
 _RUNPOD_BASE_URL = "https://api.runpod.ai/v2"
 _SUBMIT_TIMEOUT_SECONDS = 30
 _POLL_INTERVAL_SECONDS = 5
-_POLL_TIMEOUT_SECONDS = 600  # a single short clip should never take this long
+# A 5-30s clip takes ~17 min on an RTX A4500 (50 steps at ~20s each), so the
+# old 600s limit gave up on jobs that were still healthy. Keep this above the
+# endpoint's execution timeout (1800s).
+_POLL_TIMEOUT_SECONDS = 1800
 _TERMINAL_STATUSES = {"COMPLETED", "FAILED", "CANCELLED", "TIMED_OUT"}
 
 
