@@ -99,14 +99,44 @@ def test_raises_when_job_fails(monkeypatch):
             pass
 
         def json(self):
-            return {"status": "FAILED", "output": None}
+            return {"status": "FAILED", "output": None, "error": "CUDA out of memory"}
 
     import services.video.wan.adapter as adapter_module
+    from services.video.engine import ClipJobLost
 
     monkeypatch.setattr(adapter_module.httpx, "post", lambda *a, **k: _FakeSubmitResponse())
     monkeypatch.setattr(adapter_module.httpx, "get", lambda *a, **k: _FakeStatusResponse())
 
     engine = WanEngine(runpod_api_key="key", wan_endpoint_id="endpoint123")
     request = SceneClipRequest(scene_id="s1", visual_prompt="a cat", duration_seconds=8)
-    with pytest.raises(RuntimeError, match="FAILED"):
+    with pytest.raises(ClipJobLost, match="CUDA out of memory"):
+        engine.generate_clip(request, "/tmp/does-not-matter.mp4")
+
+
+def test_raises_with_generic_message_when_runpod_gives_no_error_detail(monkeypatch):
+    class _FakeSubmitResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"id": "job123", "status": "IN_QUEUE"}
+
+    class _FakeStatusResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"status": "CANCELLED", "output": None}
+
+    import services.video.wan.adapter as adapter_module
+    from services.video.engine import ClipJobLost
+
+    monkeypatch.setattr(adapter_module.httpx, "post", lambda *a, **k: _FakeSubmitResponse())
+    monkeypatch.setattr(adapter_module.httpx, "get", lambda *a, **k: _FakeStatusResponse())
+
+    engine = WanEngine(runpod_api_key="key", wan_endpoint_id="endpoint123")
+    request = SceneClipRequest(scene_id="s1", visual_prompt="a cat", duration_seconds=8)
+    with pytest.raises(ClipJobLost, match="Runpod dashboard"):
         engine.generate_clip(request, "/tmp/does-not-matter.mp4")

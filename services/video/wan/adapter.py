@@ -137,7 +137,15 @@ class WanEngine(VideoEngine):
             time.sleep(_POLL_INTERVAL_SECONDS)
 
         if status != "COMPLETED":
-            raise ClipJobLost(f"Runpod job {job_id} ended with status '{status}'")
+            # Runpod puts the handler's traceback/crash reason at the top level
+            # of the status payload (`error`) when a job ends FAILED/CANCELLED/
+            # TIMED_OUT — `output` is null in that case. Surface it; without
+            # this, every failure looked identical ("ended with status
+            # 'FAILED'") with no way to tell OOM from a bad image pull from a
+            # bug in handler.py short of opening the Runpod dashboard by hand.
+            detail = payload.get("error")
+            suffix = f": {detail}" if detail else " (no error detail returned by Runpod — check the endpoint's own logs in the Runpod dashboard)"
+            raise ClipJobLost(f"Runpod job {job_id} ended with status '{status}'{suffix}")
         output = payload["output"]
         if "error" in output:
             raise ClipJobLost(f"Wan worker error for job {job_id}: {output['error']}")
