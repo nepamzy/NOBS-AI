@@ -1,7 +1,13 @@
 # Runpod Serverless worker: Wan2.1 T2V 1.3B. Built by Runpod from this repo.
-# NOT yet built or tested. The base image tag and package pins must be confirmed
-# on the first real build; a wrong tag fails the build before any GPU time is billed.
+# Built and running for real since Oct 2026; see handler.py's module
+# docstring for the CUDA-OOM fix history on real paid runs.
 FROM pytorch/pytorch:2.4.0-cuda12.4-cudnn9-runtime
+
+# Addresses the "N GiB reserved/unallocated" fragmentation pattern in the
+# OOM traces from real runs — PyTorch's own documented fix for it. _pipe is
+# a warm-worker singleton reused across many jobs, so fragmentation that
+# would be harmless in a single short-lived process accumulates instead.
+ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 WORKDIR /app
 

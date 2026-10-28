@@ -14,11 +14,24 @@ fits in 16GB VRAM with room to spare (the 14B model is tight on 16GB). The weigh
 are downloaded at Docker build time (see Dockerfile) so a cold worker doesn't
 spend billed GPU time downloading ~5GB.
 
-This file has NOT been run on a GPU yet. The first real run is the paid test.
+The first real paid runs (Oct 2026, on a 19.58GB-VRAM worker) crashed with
+`torch.OutOfMemoryError` ("19.54 GiB already in use ... 30.00 MiB free") inside
+the transformer's attention block — not a code bug, a genuine peak-memory
+ceiling, worsened by `_pipe` being a warm-worker singleton reused across many
+jobs (CUDA allocator fragmentation accumulates job over job, per the "2.94 GiB
+reserved/unallocated" in that same error). Fixed with attention slicing + VAE
+tiling (lower peak memory per job, each a no-op if the installed diffusers
+version doesn't support it on this model) and an explicit cache clear after
+every job. `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (Dockerfile) is
+the other half — PyTorch's own documented fix for that exact "reserved but
+unallocated" fragmentation pattern. Still unverified against a real GPU run
+since none has succeeded yet; if jobs still OOM after this, the next lever is
+`enable_sequential_cpu_offload()` (slower, but far lower peak VRAM) before
+reaching for a bigger/pricier GPU tier.
 """
 
 import base64
-import io
+import gc
 import tempfile
 from pathlib import Path
 
@@ -41,6 +54,24 @@ _NEGATIVE_PROMPT = (
 _pipe: WanPipeline | None = None
 
 
+def _enable_memory_savings(pipe: WanPipeline) -> None:
+    """Lowers peak VRAM per job at some speed cost. Each call is wrapped
+    individually and best-effort: a diffusers/model version that doesn't
+    support a given method must not crash job submission over it."""
+    try:
+        pipe.enable_attention_slicing()
+    except Exception:
+        pass
+    try:
+        pipe.vae.enable_tiling()
+    except Exception:
+        pass
+    try:
+        pipe.vae.enable_slicing()
+    except Exception:
+        pass
+
+
 def _load_pipeline() -> WanPipeline:
     """Loaded once per worker, on the first job, then reused for later jobs."""
     global _pipe
@@ -48,6 +79,7 @@ def _load_pipeline() -> WanPipeline:
         vae = AutoencoderKLWan.from_pretrained(_MODEL_ID, subfolder="vae", torch_dtype=torch.float32)
         _pipe = WanPipeline.from_pretrained(_MODEL_ID, vae=vae, torch_dtype=torch.bfloat16)
         _pipe.to("cuda")
+        _enable_memory_savings(_pipe)
     return _pipe
 
 
@@ -67,20 +99,28 @@ def handler(job: dict) -> dict:
 
     pipe = _load_pipeline()
     num_frames = _frame_count_for(duration_seconds)
-    output = pipe(
-        prompt=prompt,
-        negative_prompt=_NEGATIVE_PROMPT,
-        height=_HEIGHT,
-        width=_WIDTH,
-        num_frames=num_frames,
-        guidance_scale=5.0,
-    ).frames[0]
+    try:
+        output = pipe(
+            prompt=prompt,
+            negative_prompt=_NEGATIVE_PROMPT,
+            height=_HEIGHT,
+            width=_WIDTH,
+            num_frames=num_frames,
+            guidance_scale=5.0,
+        ).frames[0]
 
-    # export_to_video needs a file path, so write to a temp folder and read it back.
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        tmp_path = str(Path(tmp_dir) / "clip.mp4")
-        export_to_video(output, tmp_path, fps=_FPS)
-        mp4_bytes = Path(tmp_path).read_bytes()
+        # export_to_video needs a file path, so write to a temp folder and read it back.
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = str(Path(tmp_dir) / "clip.mp4")
+            export_to_video(output, tmp_path, fps=_FPS)
+            mp4_bytes = Path(tmp_path).read_bytes()
+    finally:
+        # _pipe is a warm-worker singleton reused across many jobs — without
+        # this, allocator fragmentation (torch.cuda's "reserved but
+        # unallocated" memory) builds up job over job until a later job OOMs
+        # even though any one job alone would have fit. Runs on failure too.
+        gc.collect()
+        torch.cuda.empty_cache()
 
     return {
         "clip_base64": base64.b64encode(mp4_bytes).decode("ascii"),
