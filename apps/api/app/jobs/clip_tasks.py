@@ -1,6 +1,7 @@
 """RQ task entry points for the clipping pipeline — mirrors
 apps/api/app/jobs/tasks.py's shape for the main video pipeline."""
 
+import logging
 import uuid
 
 from app.config import settings
@@ -9,7 +10,32 @@ from services.clipping.pipeline import ClipPipelineBlocked, ClipPipelineContext,
 from services.clipping.transcription.factory import get_transcription_engine
 from services.storage.factory import get_storage_backend
 
+logger = logging.getLogger(__name__)
+
 _MAX_STAGES_PER_JOB = 6  # UPLOADED, TRANSCRIBING, SELECTING_CLIPS, EXTRACTING + headroom
+
+
+def _record_clip_failure(source_video_id: str, stage_before: str, exc: Exception) -> None:
+    """Mark a source video FAILED on a brand-new DB session — same reasoning
+    as app/jobs/tasks.py's _record_failure: the job's own session may be
+    the thing that just broke. Without this, an unexpected crash left the
+    row stuck at its last stage forever with no reason shown anywhere."""
+    from app.models.enums import ClipJobStage
+    from app.models.source_video import SourceVideo
+
+    fresh = SessionLocal()
+    try:
+        source_video = fresh.get(SourceVideo, uuid.UUID(source_video_id))
+        if source_video is None:
+            return
+        source_video.stage = ClipJobStage.FAILED
+        source_video.stage_detail = f"Crashed at '{stage_before}': {type(exc).__name__}: {exc}"
+        fresh.commit()
+    except Exception:
+        logger.exception("Could not record failure for source video %s", source_video_id)
+        fresh.rollback()
+    finally:
+        fresh.close()
 
 
 def _build_clip_context() -> ClipPipelineContext:
@@ -89,10 +115,22 @@ def advance_clip_pipeline(source_video_id: str) -> str:
         for _ in range(_MAX_STAGES_PER_JOB):
             if source_video.stage in terminal:
                 break
+            stage_before = source_video.stage.value
             try:
                 advance_clip_stage(source_video, db, ctx)
             except ClipPipelineBlocked as blocked:
                 return f"blocked at {blocked.stage}: {blocked.reason}"
+            except Exception as exc:
+                # Anything unexpected used to leave the source video silently
+                # stuck at its last stage with no reason shown anywhere.
+                # Record it as FAILED with the real error instead.
+                logger.exception(
+                    "Clip pipeline crashed at stage %s for source video %s",
+                    stage_before,
+                    source_video_id,
+                )
+                _record_clip_failure(source_video_id, stage_before, exc)
+                return f"failed at {stage_before}: {exc}"
 
         if source_video.stage == ClipJobStage.COMPLETED and source_video.auto_publish:
             publish_result = _auto_publish_clips_to_youtube(source_video, db)

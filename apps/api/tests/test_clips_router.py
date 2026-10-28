@@ -15,6 +15,46 @@ def test_upload_source_video_creates_row_and_enqueues_job(client, monkeypatch, t
     assert len(client.enqueued_clip_jobs) == 1
 
 
+def test_upload_source_video_routes_through_storage_backend(
+    client, db_session, monkeypatch, tmp_path
+):
+    """With STORAGE_BACKEND=supabase, source_path must be the uploaded URL,
+    not the local path only this API container can see — otherwise the
+    worker (a separate Render service/disk) can never find the file."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "local_storage_root", str(tmp_path))
+    monkeypatch.setattr(settings, "storage_backend", "supabase")
+    monkeypatch.setattr(settings, "supabase_url", "https://x.supabase.co")
+    monkeypatch.setattr(settings, "supabase_service_role_key", "service-role-key")
+    monkeypatch.setattr(settings, "supabase_storage_bucket", "nobs-ai")
+
+    import services.storage.supabase_backend as supabase_backend_module
+
+    class _FakeUploadResponse:
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr(
+        supabase_backend_module.httpx, "post", lambda *a, **k: _FakeUploadResponse()
+    )
+
+    response = client.post(
+        "/source-videos",
+        files={"file": ("my-podcast.mp4", b"fake mp4 bytes", "video/mp4")},
+    )
+    assert response.status_code == 201
+
+    from app.models.source_video import SourceVideo
+
+    db_session.expire_all()
+    row = db_session.get(SourceVideo, response.json()["id"])
+    assert row.source_path.startswith(
+        "https://x.supabase.co/storage/v1/object/public/nobs-ai/"
+    )
+    assert str(tmp_path) not in row.source_path
+
+
 def test_upload_rejects_unsupported_content_type(client):
     response = client.post(
         "/source-videos",

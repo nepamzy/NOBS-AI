@@ -14,6 +14,7 @@ from app.models.user import User
 from app.schemas.clip import ClipRead, SourceVideoRead, SourceVideoUpdate
 from services.common.errors import EngineNotConfiguredError
 from services.connectors.youtube.adapter import YouTubeConnector
+from services.storage.factory import get_storage_backend
 
 router = APIRouter(tags=["clips"])
 
@@ -53,11 +54,28 @@ async def upload_source_video(
         while chunk := await file.read(_CHUNK_SIZE):
             out.write(chunk)
 
+    # This API process and the worker that runs the clip pipeline are
+    # separate Render services with separate disks — a bare local path here
+    # pointed the worker at a file that only ever existed on this container
+    # ("No such file or directory" on every real upload). Route it through
+    # the same StorageBackend every other artifact uses so source_path is
+    # something the worker can actually reach; with STORAGE_BACKEND=local
+    # (single-process dev) this is a no-op and returns the path unchanged.
+    # ffmpeg/ffprobe (audio.py, frames.py, extractor.py) take a URL as
+    # their "-i" input directly, so no further change is needed downstream.
+    storage_backend = get_storage_backend(
+        settings.storage_backend,
+        settings.supabase_url,
+        settings.supabase_service_role_key,
+        settings.supabase_storage_bucket,
+    )
+    stored_source_path = storage_backend.upload(str(dest_path), f"clips/{video_id}/source{suffix}")
+
     source_video = SourceVideo(
         id=video_id,
         owner_id=user.id,
         original_filename=file.filename or "video.mp4",
-        source_path=str(dest_path),
+        source_path=stored_source_path,
         target_clip_count=settings.clip_target_count,
     )
     db.add(source_video)
