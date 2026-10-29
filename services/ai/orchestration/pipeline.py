@@ -325,6 +325,21 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
         return
 
     if stage == PipelineStage.VIDEO_GENERATION:
+        # The VOICE stage's test-mode path deliberately leaves "TEST MODE:
+        # narration skipped" in stage_detail as a visible breadcrumb (see
+        # above) rather than clearing it the way every other stage
+        # transition does. That's fine as a note, but this stage's own real
+        # work can run for 15+ minutes per clip — during that whole window,
+        # the leftover text made the frontend's "is this blocked?" check
+        # (any non-empty stage_detail outside COMPLETED/STORYBOARD_REVIEW)
+        # read a perfectly healthy, in-progress generation as failed. Clear
+        # it before starting real work, same as every other stage does on
+        # entry; _block()/the except branches below still set a real one
+        # when something actually needs attention.
+        if video.stage_detail:
+            video.stage_detail = ""
+            db.commit()
+
         script = db.query(Script).filter(Script.video_id == video.id).one()
         scenes = script.scenes
         done = {

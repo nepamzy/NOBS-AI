@@ -654,3 +654,32 @@ def test_test_no_audio_mode_skips_voice_engine_and_voiceovers(db_session):
     assert fake_voice.calls == []
     assert db_session.query(Voiceover).filter(Voiceover.video_id == video.id).count() == 0
     assert "TEST MODE" in video.stage_detail
+
+
+def test_video_generation_clears_leftover_test_mode_note_before_real_work(db_session):
+    # The test-mode VOICE path above leaves a real, deliberate stage_detail
+    # ("TEST MODE: narration skipped") rather than clearing it the way every
+    # other stage transition does. VIDEO_GENERATION's own real work (one
+    # clip request per scene) can run for many minutes — if that leftover
+    # text were still sitting in stage_detail while a scene's clip request
+    # is in flight, the frontend's "needs attention" check (any non-empty
+    # stage_detail outside completed/storyboard_review) would misreport a
+    # perfectly healthy, in-progress generation as failed. Assert it's
+    # cleared by the time the video engine is actually called.
+    video, ctx, _fake_voice, _fake_video = _advance_to_voice(db_session)
+    ctx.test_no_audio = True
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VOICE -> VIDEO_GENERATION
+    assert "TEST MODE" in video.stage_detail
+
+    seen_stage_detail_mid_flight = []
+
+    class _RecordingVideoEngine(_FakeVideoEngine):
+        def generate_clip(self, request, output_path, on_submitted=None, resume_job_id=None):
+            seen_stage_detail_mid_flight.append(video.stage_detail)
+            return super().generate_clip(request, output_path, on_submitted, resume_job_id)
+
+    ctx.video_engine = _RecordingVideoEngine()
+
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VIDEO_GENERATION -> ASSEMBLY
+
+    assert seen_stage_detail_mid_flight == ["", ""]
