@@ -6,7 +6,7 @@ import type { Project, Video } from "../api/types";
 import { LoadingState } from "../components/LoadingState";
 import { PipelineProgress } from "../components/PipelineStatus";
 import { EmptyState, ErrorState, Panel, StatusPill } from "../components/ui";
-import { isBlocked, videoStatus } from "../lib/videoStatus";
+import { displayStage, isBlocked, videoStatus } from "../lib/videoStatus";
 
 type FilterKey = "all" | "published" | "drafts" | "processing" | "needs_attention";
 
@@ -189,7 +189,7 @@ export function VideoLibrary() {
                 </div>
 
                 {video.stage !== "completed" && !isBlocked(video) && (
-                  <PipelineProgress stage={video.stage} />
+                  <PipelineProgress stage={displayStage(video)} />
                 )}
 
                 <div className="mt-auto flex items-center justify-between text-xs text-white/40">

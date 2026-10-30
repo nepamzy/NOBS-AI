@@ -7,6 +7,7 @@ import { PipelineStatus } from "../components/PipelineStatus";
 import { ProjectFeedback } from "../components/ProjectFeedback";
 import { Button, ErrorState, Panel } from "../components/ui";
 import { UploadSchedules } from "../components/UploadSchedules";
+import { displayStage } from "../lib/videoStatus";
 
 export function ProjectDetail() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -77,7 +78,7 @@ export function ProjectDetail() {
               <Panel className="hover:border-white/20">
                 <p className="text-white">{video.topic}</p>
                 <div className="mt-2">
-                  <PipelineStatus stage={video.stage} />
+                  <PipelineStatus stage={displayStage(video)} />
                 </div>
               </Panel>
             </Link>

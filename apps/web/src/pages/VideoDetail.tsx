@@ -8,7 +8,7 @@ import { PipelineStepper, StageBlockedNotice, stageIndexOf } from "../components
 import { StoryboardTimeline } from "../components/StoryboardTimeline";
 import { Button, ErrorState, Panel, StatusPill } from "../components/ui";
 import { VideoPublishing } from "../components/VideoPublishing";
-import { isBlocked, videoStatus } from "../lib/videoStatus";
+import { displayStage, isBlocked, videoStatus } from "../lib/videoStatus";
 
 const ASSET_LABELS: Record<Asset["asset_type"], string> = {
   script: "Script",
@@ -240,7 +240,7 @@ export function VideoDetail() {
       </p>
 
       <Panel className="mt-5 overflow-x-auto">
-        <PipelineStepper stage={video.stage} failed={isBlocked(video)} />
+        <PipelineStepper stage={displayStage(video)} failed={isBlocked(video)} />
       </Panel>
 
       <StageBlockedNotice detail={video.stage_detail} />
