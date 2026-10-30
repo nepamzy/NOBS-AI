@@ -68,6 +68,9 @@ class ChatterboxEngine(VoiceEngine):
             timeout=_REQUEST_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
+        # Nothing else creates {storage_root}/{video_id}/voiceovers/ before
+        # this — see services/video/wan/adapter.py for the same fix and why.
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         Path(output_path).write_bytes(response.content)
 
         duration_seconds = probe_duration_seconds(output_path)

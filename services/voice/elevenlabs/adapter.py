@@ -10,6 +10,7 @@ of a separate speech-recognition pass over the audio.
 """
 
 import base64
+from pathlib import Path
 
 import httpx
 
@@ -89,6 +90,9 @@ class ElevenLabsEngine(VoiceEngine):
         payload = response.json()
 
         audio_bytes = base64.b64decode(payload["audio_base64"])
+        # Nothing else creates {storage_root}/{video_id}/voiceovers/ before
+        # this — see services/video/wan/adapter.py for the same fix and why.
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "wb") as f:
             f.write(audio_bytes)
 

@@ -22,6 +22,7 @@ documented input schema before the first real run.
 
 import base64
 import time
+from pathlib import Path
 
 import httpx
 
@@ -100,7 +101,12 @@ class WanEngine(VideoEngine):
 
         output = self._wait_for_job(job_id, headers)
         # The worker returns the MP4 inline as base64 (handler.py),
-        # so no storage keys are needed on the Runpod side.
+        # so no storage keys are needed on the Runpod side. Nothing else
+        # creates {storage_root}/{video_id}/clips/ before this — the first
+        # real successful generation (Oct 2026) crashed right here with
+        # FileNotFoundError, since every earlier real attempt had failed
+        # before ever reaching a successful write.
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "wb") as f:
             f.write(base64.b64decode(output["clip_base64"]))
 

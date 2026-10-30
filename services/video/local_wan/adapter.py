@@ -23,6 +23,8 @@ not a bill. Nobert still has to point LOCAL_WAN_API_URL at a real,
 running server before this does anything.
 """
 
+from pathlib import Path
+
 import httpx
 
 from services.common.errors import ApprovalRequiredError, CostWarning
@@ -67,6 +69,9 @@ class LocalWanEngine(VideoEngine):
         )
         response.raise_for_status()
 
+        # Nothing else creates {storage_root}/{video_id}/clips/ before this —
+        # see services/video/wan/adapter.py for the same fix and why.
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "wb") as f:
             f.write(response.content)
 
