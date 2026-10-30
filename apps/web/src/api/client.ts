@@ -32,8 +32,18 @@ const TOKEN_STORAGE_KEY = "nobs_ai_token";
 
 // Video/Asset urls (e.g. "/storage/...") come back relative to the API
 // server, not the frontend dev server — this makes them fetchable.
+// Mirrors app/storage.py's to_url(): with STORAGE_BACKEND=supabase, every
+// *_url field the API returns is already an absolute https:// URL — only a
+// bare local path (STORAGE_BACKEND=local, or an artifact predating the
+// upload step) needs the API's own origin prepended to become fetchable.
+// Before this check, the first real completed video (Oct 2026) got served
+// a mangled "https://nobs-ai-api.onrender.comhttps://...supabase.co/..."
+// src — invalid, so the player showed nothing, even though the real file
+// was fine. Every resolveStorageUrl call site had this bug; it was never
+// hit before because no field had ever actually held a remote URL yet.
 export function resolveStorageUrl(url: string | null): string | null {
   if (!url) return null;
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
   return `${BASE_URL}${url}`;
 }
 
