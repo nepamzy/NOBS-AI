@@ -19,17 +19,32 @@ manual Restart/Continue) so a video that is persistently, not transiently,
 broken stops auto-retrying and is left FAILED for a human to look at —
 same as it is today — instead of quietly re-billing forever.
 
+_RECENT_CRASH_WINDOW_MINUTES is the second, equally important guard — and
+one the first version of this file shipped without, with real consequences:
+on its first tick after deploying, it found EVERY video that had ever
+crashed and still had auto_retry_count < 2 — years-old abandoned tests,
+and one video Nobert had deliberately cancelled the night before over
+cost — and fired a brand-new paid Runpod job for each of them, all at
+once, unasked. A video that crashed days or weeks ago and was never
+revisited is not "a human hasn't gotten to it yet in the last 30
+seconds" — it's abandoned, and auto-retrying it is pure unwanted spend.
+Only a video whose crash is itself recent is in the situation this file
+exists to fix (a result about to expire before a human notices), so only
+those are eligible.
+
 Runs inside apps/worker/worker.py via the same SchedulerRunner/APScheduler
 background thread as the upload-schedule checker, in the same process.
 """
 
 import re
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 _CHECK_INTERVAL_SECONDS = 30
 _MAX_AUTO_RETRIES = 2
+_RECENT_CRASH_WINDOW_MINUTES = 10
 _CRASHED_AT = re.compile(r"Crashed at '([a-z_]+)'")
 
 
@@ -44,10 +59,15 @@ def check_and_retry_crashed_videos(db: Session) -> list[str]:
     from app.models.video import Video
 
     not_resumable = {PipelineStage.TOPIC, PipelineStage.COMPLETED, PipelineStage.FAILED}
+    cutoff = datetime.now(UTC) - timedelta(minutes=_RECENT_CRASH_WINDOW_MINUTES)
 
     candidates = (
         db.query(Video)
-        .filter(Video.stage == PipelineStage.FAILED, Video.auto_retry_count < _MAX_AUTO_RETRIES)
+        .filter(
+            Video.stage == PipelineStage.FAILED,
+            Video.auto_retry_count < _MAX_AUTO_RETRIES,
+            Video.updated_at >= cutoff,
+        )
         .all()
     )
 
