@@ -3,8 +3,20 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from app.models.enums import PipelineStage
+from app.models.enums import PipelineStage, TransitionType
 from app.storage import to_url
+
+
+class OwnSceneCreate(BaseModel):
+    """One scene of a script Nobert already wrote himself, pasted in on the
+    Idea step instead of generated. Same shape as a Scene row — narration,
+    visual_prompt, duration, transition — because this skips the SCRIPT
+    stage's LLM call entirely and writes these fields straight to the DB."""
+
+    narration: str = Field(min_length=1)
+    visual_prompt: str = Field(min_length=1)
+    duration_seconds: int = Field(ge=1, le=60)
+    transition: TransitionType = TransitionType.CUT
 
 
 class VideoCreate(BaseModel):
@@ -15,6 +27,13 @@ class VideoCreate(BaseModel):
     style_preset: str = ""
     # Step 1 toggles (CLAUDE.md Part 3): let NOBS AI research vs. bring your own.
     run_research: bool = True
+    # "I already have a script" (CLAUDE.md Part 3): a pre-written,
+    # scene-structured script. When set, RESEARCH and SCRIPT are skipped
+    # entirely (no LLM call, no spend) and the video starts straight at
+    # STORYBOARD_REVIEW with these scenes already in place.
+    own_scenes: list[OwnSceneCreate] | None = Field(default=None, min_length=1)
+    script_title: str = ""
+    script_hook: str = ""
 
 
 class VideoRead(BaseModel):

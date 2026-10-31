@@ -1,6 +1,7 @@
 import uuid
 from pathlib import Path
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,13 @@ router = APIRouter(tags=["clips"])
 
 _ALLOWED_VIDEO_TYPES = {"video/mp4", "video/quicktime", "video/x-matroska", "video/webm"}
 _CHUNK_SIZE = 1024 * 1024  # 1MB — streamed to disk, never held fully in memory
+# Supabase Storage's "Global file size limit" is hard-capped at 50MB on the
+# Free plan (can't be raised without upgrading) — every upload lands in
+# services/storage/supabase_backend.py's upload(), which would otherwise
+# fail with an unhandled httpx.HTTPStatusError (a confusing bare 500) on
+# anything bigger. Enforced here, mid-stream, so an oversized file is never
+# fully buffered to disk first.
+_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 
 def _owned_source_video_or_404(db: Session, source_video_id: uuid.UUID, user: User) -> SourceVideo:
@@ -50,8 +58,22 @@ async def upload_source_video(
     suffix = Path(file.filename or "video.mp4").suffix or ".mp4"
     dest_path = dest_dir / f"source{suffix}"
 
+    total_bytes = 0
     with open(dest_path, "wb") as out:
         while chunk := await file.read(_CHUNK_SIZE):
+            total_bytes += len(chunk)
+            if total_bytes > _MAX_UPLOAD_BYTES:
+                out.close()
+                dest_path.unlink(missing_ok=True)
+                raise HTTPException(
+                    status_code=413,
+                    detail=(
+                        f"{file.filename or 'This file'} is over 50MB — that's the hard "
+                        "cap on Supabase Storage's free plan, so it can't be uploaded as-is. "
+                        "Trim or compress it first, or ask Nobert to upgrade the Supabase "
+                        "plan to raise the limit."
+                    ),
+                )
             out.write(chunk)
 
     # This API process and the worker that runs the clip pipeline are
@@ -69,7 +91,17 @@ async def upload_source_video(
         settings.supabase_service_role_key,
         settings.supabase_storage_bucket,
     )
-    stored_source_path = storage_backend.upload(str(dest_path), f"clips/{video_id}/source{suffix}")
+    try:
+        stored_source_path = storage_backend.upload(
+            str(dest_path), f"clips/{video_id}/source{suffix}"
+        )
+    except httpx.HTTPStatusError as exc:
+        dest_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Upload to storage failed ({exc.response.status_code}): "
+            f"{exc.response.text[:300]}",
+        ) from exc
 
     source_video = SourceVideo(
         id=video_id,

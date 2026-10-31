@@ -111,6 +111,57 @@ def test_create_project_and_video_enqueues_job(client):
     assert client.enqueued_jobs[0]["run_research"] is True
 
 
+def test_create_video_with_own_scenes_skips_research_and_script(client):
+    # "I already have a script" must never enqueue a pipeline job — RESEARCH
+    # and SCRIPT are real LLM calls, and there's nothing for either to do
+    # when the scenes are already provided. Re-running them would silently
+    # re-bill for no reason.
+    project_id = client.post("/projects", json={"name": "My Project"}).json()["id"]
+
+    video_resp = client.post(
+        "/videos",
+        json={
+            "project_id": project_id,
+            "topic": "test topic",
+            "target_duration_seconds": 12,
+            "own_scenes": [
+                {
+                    "narration": "Scene one narration",
+                    "visual_prompt": "a cat",
+                    "duration_seconds": 6,
+                },
+                {
+                    "narration": "Scene two narration",
+                    "visual_prompt": "a dog",
+                    "duration_seconds": 6,
+                    "transition": "fade",
+                },
+            ],
+            "script_title": "My Title",
+            "script_hook": "My Hook",
+        },
+    )
+    assert video_resp.status_code == 201
+    body = video_resp.json()
+    assert body["stage"] == "storyboard_review"
+    assert client.enqueued_jobs == []  # no job queued — nothing to generate yet
+
+    script_resp = client.get(f"/videos/{body['id']}/script")
+    assert script_resp.status_code == 200
+    script = script_resp.json()
+    assert script["title"] == "My Title"
+    assert script["hook"] == "My Hook"
+    narrations = [s["narration"] for s in script["scenes"]]
+    assert narrations == ["Scene one narration", "Scene two narration"]
+    assert script["scenes"][0]["transition"] == "cut"  # default
+    assert script["scenes"][1]["transition"] == "fade"
+
+    # Approving from here enqueues the real pipeline, same as any other video.
+    approve_resp = client.post(f"/videos/{body['id']}/approve-storyboard")
+    assert approve_resp.status_code == 200
+    assert len(client.enqueued_jobs) == 1
+
+
 def test_list_videos_filters_by_project(client):
     project_a = client.post("/projects", json={"name": "A"}).json()["id"]
     project_b = client.post("/projects", json={"name": "B"}).json()["id"]

@@ -76,6 +76,36 @@ def create_video(
     db.commit()
     db.refresh(video)
 
+    if payload.own_scenes:
+        # "I already have a script" — write it straight to the DB and park
+        # at STORYBOARD_REVIEW. No job is enqueued: RESEARCH and SCRIPT are
+        # real LLM calls, and there is nothing for either to do when Nobert
+        # already wrote the scenes himself — enqueueing here would silently
+        # re-run (and re-bill) both stages for no reason.
+        script = Script(
+            video_id=video.id,
+            title=payload.script_title.strip() or payload.topic[:500],
+            hook=payload.script_hook.strip(),
+            estimated_duration_seconds=sum(s.duration_seconds for s in payload.own_scenes),
+            word_count=sum(len(s.narration.split()) for s in payload.own_scenes),
+        )
+        script.scenes = [
+            Scene(
+                order=i + 1,
+                narration=s.narration.strip(),
+                visual_prompt=s.visual_prompt.strip(),
+                duration_seconds=s.duration_seconds,
+                transition=s.transition,
+            )
+            for i, s in enumerate(payload.own_scenes)
+        ]
+        db.add(script)
+        video.stage = PipelineStage.STORYBOARD_REVIEW
+        video.stage_detail = "Awaiting storyboard approval"
+        db.commit()
+        db.refresh(video)
+        return video
+
     # Hands off to the job queue immediately — the API never blocks on
     # research/script generation (CLAUDE.md: Job/queue system — critical).
     enqueue_pipeline_start(video_id=video.id, run_research=payload.run_research)

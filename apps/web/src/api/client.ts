@@ -21,6 +21,7 @@ import type {
   SpendSummary,
   StylePreset,
   TokenPackage,
+  TransitionType,
   UploadSchedule,
   Video,
   VideoFeedback,
@@ -156,6 +157,14 @@ export const api = {
     voice_preset?: string;
     style_preset?: string;
     run_research: boolean;
+    own_scenes?: {
+      narration: string;
+      visual_prompt: string;
+      duration_seconds: number;
+      transition?: TransitionType;
+    }[];
+    script_title?: string;
+    script_hook?: string;
   }) => request<Video>("/videos", { method: "POST", body: JSON.stringify(payload) }),
   getVideo: (id: string) => request<Video>(`/videos/${id}`),
   getVideoScript: (id: string) => request<Script>(`/videos/${id}/script`),

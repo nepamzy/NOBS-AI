@@ -24,6 +24,10 @@ const STAGE_TONES: Record<ClipJobStage, Tone> = {
 };
 
 const ACCEPTED_TYPES = "video/mp4,video/quicktime,video/x-matroska,video/webm";
+// Supabase Storage's Free-plan global file size limit — see clips.py's
+// _MAX_UPLOAD_BYTES. Checked here too so an oversized file fails instantly
+// instead of uploading for nothing and getting rejected server-side.
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -82,8 +86,15 @@ export function Clips() {
   );
 
   async function uploadFile(file: File) {
-    setUploading(true);
     setError(null);
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError(
+        `${file.name} is ${(file.size / (1024 * 1024)).toFixed(0)}MB — that's over the ` +
+          "50MB limit, so it won't be accepted. Trim or compress it first.",
+      );
+      return;
+    }
+    setUploading(true);
     try {
       await api.uploadSourceVideo(file);
       refresh();
@@ -149,7 +160,7 @@ export function Clips() {
           <p className="font-medium text-white">
             {uploading ? "Uploading…" : "Drop a video here or click to upload"}
           </p>
-          <p className="text-xs text-white/40">Supports MP4, MOV, WEBM</p>
+          <p className="text-xs text-white/40">Supports MP4, MOV, WEBM — up to 50MB</p>
         </div>
 
         <Panel>

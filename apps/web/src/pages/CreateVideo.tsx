@@ -1,8 +1,8 @@
-import { Briefcase, Check, Clapperboard, GraduationCap, Sparkles, Smile } from "lucide-react";
+import { Briefcase, Check, Clapperboard, GraduationCap, Plus, Sparkles, Smile, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "../api/client";
-import type { Project } from "../api/types";
+import type { Project, TransitionType } from "../api/types";
 import { DurationPicker } from "../components/DurationPicker";
 import { MicButton } from "../components/MicButton";
 import { StylePicker } from "../components/StylePicker";
@@ -10,6 +10,17 @@ import { ErrorState, Panel } from "../components/ui";
 import { VoicePicker } from "../components/VoicePicker";
 
 const PHASES = ["Idea", "Script", "Storyboard", "Approval", "Production", "Final"];
+
+interface OwnScene {
+  narration: string;
+  visual_prompt: string;
+  duration_seconds: number;
+  transition: TransitionType;
+}
+
+function emptyScene(): OwnScene {
+  return { narration: "", visual_prompt: "", duration_seconds: 6, transition: "cut" };
+}
 
 // Not a real backend field — VideoCreate has no "content type". Picking one
 // here has a real effect anyway: it's folded into the topic actually sent
@@ -32,8 +43,20 @@ export function CreateVideo() {
   const [voicePreset, setVoicePreset] = useState("");
   const [stylePreset, setStylePreset] = useState("");
   const [runResearch, setRunResearch] = useState(true);
+  const [hasOwnScript, setHasOwnScript] = useState(false);
+  const [scriptTitle, setScriptTitle] = useState("");
+  const [scriptHook, setScriptHook] = useState("");
+  const [ownScenes, setOwnScenes] = useState<OwnScene[]>([emptyScene()]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function updateScene(index: number, patch: Partial<OwnScene>) {
+    setOwnScenes((scenes) => scenes.map((s, i) => (i === index ? { ...s, ...patch } : s)));
+  }
+
+  const ownScenesValid =
+    ownScenes.length > 0 &&
+    ownScenes.every((s) => s.narration.trim() && s.visual_prompt.trim() && s.duration_seconds >= 1);
 
   useEffect(() => {
     api.listProjects().then(setProjects).catch(() => setProjects([]));
@@ -66,6 +89,18 @@ export function CreateVideo() {
         voice_preset: voicePreset,
         style_preset: stylePreset,
         run_research: runResearch,
+        ...(hasOwnScript
+          ? {
+              own_scenes: ownScenes.map((s) => ({
+                narration: s.narration.trim(),
+                visual_prompt: s.visual_prompt.trim(),
+                duration_seconds: s.duration_seconds,
+                transition: s.transition,
+              })),
+              script_title: scriptTitle.trim(),
+              script_hook: scriptHook.trim(),
+            }
+          : {}),
       });
 
       navigate(`/videos/${video.id}`);
@@ -152,11 +187,121 @@ export function CreateVideo() {
             <label className="flex items-center gap-2 text-sm text-white/70">
               <input
                 type="checkbox"
-                checked={runResearch}
-                onChange={(e) => setRunResearch(e.target.checked)}
+                checked={hasOwnScript}
+                onChange={(e) => setHasOwnScript(e.target.checked)}
               />
-              Let NOBS AI research the topic
+              I already have a script
             </label>
+
+            {!hasOwnScript && (
+              <label className="flex items-center gap-2 text-sm text-white/70">
+                <input
+                  type="checkbox"
+                  checked={runResearch}
+                  onChange={(e) => setRunResearch(e.target.checked)}
+                />
+                Let NOBS AI research the topic
+              </label>
+            )}
+
+            {hasOwnScript && (
+              <div className="mt-2 flex flex-col gap-4 rounded-lg border border-white/10 bg-black/20 p-4">
+                <p className="text-xs text-white/40">
+                  Paste your own scene-by-scene script. Skips Research and Script entirely —
+                  no LLM call, no spend — and goes straight to Storyboard for your approval.
+                </p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-sm text-white/70">Title (optional)</span>
+                    <input
+                      value={scriptTitle}
+                      onChange={(e) => setScriptTitle(e.target.value)}
+                      className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-white"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-sm text-white/70">Hook (optional)</span>
+                    <input
+                      value={scriptHook}
+                      onChange={(e) => setScriptHook(e.target.value)}
+                      className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-white"
+                    />
+                  </label>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  {ownScenes.map((scene, i) => (
+                    <div key={i} className="rounded-md border border-white/10 bg-white/5 p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-white/50">Scene {i + 1}</span>
+                        {ownScenes.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setOwnScenes((scenes) => scenes.filter((_, idx) => idx !== i))
+                            }
+                            className="text-white/30 hover:text-red-400"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                      <div className="mt-2 flex flex-col gap-2">
+                        <textarea
+                          value={scene.narration}
+                          onChange={(e) => updateScene(i, { narration: e.target.value })}
+                          placeholder="Narration"
+                          rows={2}
+                          className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-white/30"
+                        />
+                        <textarea
+                          value={scene.visual_prompt}
+                          onChange={(e) => updateScene(i, { visual_prompt: e.target.value })}
+                          placeholder="Visual description (what the clip should show)"
+                          rows={2}
+                          className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-white/30"
+                        />
+                        <div className="flex gap-2">
+                          <label className="flex items-center gap-1.5 text-xs text-white/50">
+                            Duration
+                            <input
+                              type="number"
+                              min={1}
+                              max={60}
+                              value={scene.duration_seconds}
+                              onChange={(e) =>
+                                updateScene(i, { duration_seconds: Number(e.target.value) })
+                              }
+                              className="w-16 rounded-md border border-white/10 bg-black/20 px-2 py-1 text-white"
+                            />
+                            s
+                          </label>
+                          <select
+                            value={scene.transition}
+                            onChange={(e) =>
+                              updateScene(i, { transition: e.target.value as TransitionType })
+                            }
+                            className="rounded-md border border-white/10 bg-black/20 px-2 py-1 text-xs text-white"
+                          >
+                            <option value="cut">Cut</option>
+                            <option value="fade">Fade</option>
+                            <option value="dissolve">Dissolve</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setOwnScenes((scenes) => [...scenes, emptyScene()])}
+                  className="flex items-center justify-center gap-1.5 rounded-md border border-dashed border-white/15 py-2 text-xs text-white/50 hover:border-white/30 hover:text-white"
+                >
+                  <Plus size={14} /> Add scene
+                </button>
+              </div>
+            )}
 
             {projects.length > 0 && (
               <div className="mt-2">
@@ -219,7 +364,7 @@ export function CreateVideo() {
               </button>
               <button
                 onClick={handleCreate}
-                disabled={submitting || !topic.trim()}
+                disabled={submitting || !topic.trim() || (hasOwnScript && !ownScenesValid)}
                 className="rounded-md bg-gradient-to-r from-accent-600 to-accent-400 px-5 py-2 text-sm font-medium text-white disabled:opacity-40"
               >
                 {submitting ? "Creating…" : "Next →"}
