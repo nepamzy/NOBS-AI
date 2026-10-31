@@ -137,6 +137,11 @@ export function CreateVideo() {
     ownScenes.length > 0 &&
     ownScenes.every((s) => s.narration.trim() && s.visual_prompt.trim() && s.duration_seconds >= 1);
 
+  // With a pasted script, its own Title covers what the separate Topic box
+  // is for — don't force filling in both just to name the same video.
+  const effectiveTopic = topic.trim() || (hasOwnScript ? scriptTitle.trim() : "");
+  const canSubmit = effectiveTopic && (!hasOwnScript || ownScenesValid);
+
   useEffect(() => {
     api.listProjects().then(setProjects).catch(() => setProjects([]));
     api
@@ -154,11 +159,11 @@ export function CreateVideo() {
     setSubmitting(true);
     try {
       const typeLabel = CONTENT_TYPES.find((t) => t.id === contentType)?.label;
-      const finalTopic = typeLabel ? `${typeLabel} video: ${topic.trim()}` : topic.trim();
+      const finalTopic = typeLabel ? `${typeLabel} video: ${effectiveTopic}` : effectiveTopic;
 
       let targetProjectId = projectId;
       if (!targetProjectId) {
-        const project = await api.createProject(topic.slice(0, 60) || "Untitled");
+        const project = await api.createProject(effectiveTopic.slice(0, 60) || "Untitled");
         targetProjectId = project.id;
       }
       const video = await api.createVideo({
@@ -247,7 +252,9 @@ export function CreateVideo() {
             </div>
 
             <label className="mt-5 flex flex-col gap-1.5">
-              <span className="text-sm text-white/70">Enter your topic or idea</span>
+              <span className="text-sm text-white/70">
+                Enter your topic or idea{hasOwnScript && " (optional — your script's Title covers this)"}
+              </span>
               <div className="flex items-start gap-2">
                 <textarea
                   autoFocus
@@ -464,7 +471,7 @@ export function CreateVideo() {
               </button>
               <button
                 onClick={handleCreate}
-                disabled={submitting || !topic.trim() || (hasOwnScript && !ownScenesValid)}
+                disabled={submitting || !canSubmit}
                 className="rounded-md bg-gradient-to-r from-accent-600 to-accent-400 px-5 py-2 text-sm font-medium text-white disabled:opacity-40"
               >
                 {submitting ? "Creating…" : "Next →"}
