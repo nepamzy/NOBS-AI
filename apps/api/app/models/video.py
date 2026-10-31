@@ -60,6 +60,13 @@ class Video(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     youtube_video_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     youtube_published: Mapped[bool] = mapped_column(default=False)
 
+    # Counts automatic resumes services/scheduling/auto_retry.py has made
+    # after a crash, capped there — a video that keeps crashing for a real
+    # reason (not a transient one) stops auto-retrying and waits for a
+    # human instead of silently re-billing forever. Reset to 0 by a manual
+    # Restart/Continue, so a human stepping in always earns a fresh budget.
+    auto_retry_count: Mapped[int] = mapped_column(Integer, default=0)
+
     project: Mapped["Project"] = relationship(back_populates="videos")
     script: Mapped["Script | None"] = relationship(
         back_populates="video", uselist=False, cascade="all, delete-orphan"

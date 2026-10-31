@@ -94,6 +94,13 @@ class SchedulerRunner:
         self._session_factory = session_factory
         self._scheduler = BackgroundScheduler()
 
+    @property
+    def scheduler(self) -> BackgroundScheduler:
+        """Exposed so other periodic checks (e.g. services/scheduling/
+        auto_retry.py) can share this same background thread instead of
+        each starting their own."""
+        return self._scheduler
+
     def _tick(self) -> None:
         db = self._session_factory()
         try:

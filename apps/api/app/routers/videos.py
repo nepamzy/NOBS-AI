@@ -285,6 +285,7 @@ def restart_video(
     video.storyboard_approved = False
     video.final_video_path = None
     video.music_track = None
+    video.auto_retry_count = 0
     db.commit()
     db.refresh(video)
 
@@ -330,6 +331,7 @@ def continue_video(
 
     video.stage = resume_stage
     video.stage_detail = ""
+    video.auto_retry_count = 0
     db.commit()
     db.refresh(video)
 

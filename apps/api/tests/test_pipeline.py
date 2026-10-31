@@ -192,6 +192,11 @@ class _FakeVoiceEngine(VoiceEngine):
     def synthesize(self, text: str, voice_preset: str, output_path: str) -> VoiceoverResult:
         self.calls.append((text, voice_preset, output_path))
         duration = len(text) * 0.5
+        # Real engines always write real bytes to output_path — matched here
+        # so ASSEMBLY's own voiceover-file-exists check (pipeline.py) doesn't
+        # treat every fake voiceover as lost local-disk state.
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(output_path).write_bytes(b"fake voiceover bytes")
         return VoiceoverResult(
             audio_path=output_path,
             duration_seconds=duration,
@@ -394,6 +399,50 @@ def test_assembly_rewinds_to_video_generation_when_a_clip_file_is_missing(db_ses
     advance_one_stage(video, db_session, ctx, run_research=True)  # regenerates the wiped scene
     assert video.stage.value == "assembly"
     assert len(fake_video.calls) == 3  # one real new request for the wiped scene only
+
+
+def test_assembly_rewinds_to_voice_when_a_voiceover_file_is_missing(db_session, monkeypatch):
+    # Same risk as the clip check above, for the other artifact that lives
+    # only on local disk until the final video is assembled. Losing it
+    # should cost a cheap VOICE re-run, never a wasted GPU re-generation of
+    # an already-good clip.
+    video, ctx, fake_voice, fake_video = _advance_to_voice(db_session)
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VOICE -> VIDEO_GENERATION
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VIDEO_GENERATION -> ASSEMBLY
+    assert len(fake_voice.calls) == 2
+    assert len(fake_video.calls) == 2
+
+    voiceovers = db_session.query(Voiceover).filter(Voiceover.video_id == video.id).all()
+    wiped = voiceovers[0]
+    wiped_scene_id = wiped.scene_id
+    Path(wiped.audio_path).unlink()
+
+    from services.rendering.ffmpeg import assembler
+
+    concat_calls = []
+    monkeypatch.setattr(assembler, "conform_clip_to_duration", lambda *a, **k: None)
+    monkeypatch.setattr(assembler, "mux_voiceover", lambda *a, **k: None)
+    monkeypatch.setattr(assembler, "concat_clips", lambda *a, **k: concat_calls.append(a))
+
+    advance_one_stage(video, db_session, ctx, run_research=True)
+
+    assert video.stage.value == "voice"
+    assert "lost" in (video.stage_detail or "").lower()
+    assert concat_calls == []  # assembly never ran
+    remaining_scene_ids = {
+        v.scene_id
+        for v in db_session.query(Voiceover).filter(Voiceover.video_id == video.id).all()
+    }
+    assert wiped_scene_id not in remaining_scene_ids  # the stale row is gone, not just flagged
+
+    advance_one_stage(video, db_session, ctx, run_research=True)  # regenerates the wiped scene
+    assert video.stage.value == "video_generation"
+    assert len(fake_voice.calls) == 3  # one real new request for the wiped scene only
+    assert len(fake_video.calls) == 2  # the existing clips were never touched
+
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VIDEO_GENERATION -> ASSEMBLY
+    assert video.stage.value == "assembly"
+    assert len(fake_video.calls) == 2  # still untouched — both clips were already good
 
 
 def test_assembly_stage_conforms_and_muxes_each_scene_before_concatenating(db_session, monkeypatch):

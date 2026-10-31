@@ -526,6 +526,33 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
             db.commit()
             return
 
+        # Same risk, same fix, for voiceovers — the other artifact that lives
+        # only on local disk (see services/storage's module docstring) until
+        # the final video is assembled. Deleting the stale row (rather than
+        # marking it failed, like a VideoClip) is enough: VOICE's own "done"
+        # check is just "does a Voiceover row exist for this scene". Only
+        # VOICE needs to re-run, not VIDEO_GENERATION — the existing clip is
+        # still good, and ASSEMBLY's own conform-to-duration step already
+        # adapts it to whatever the regenerated voiceover's length turns out
+        # to be, so no GPU spend is wasted re-doing this.
+        invalidated_voiceover_scenes = []
+        if not ctx.test_no_audio:
+            for scene_id, vo in list(voiceovers.items()):
+                audio_path = vo.audio_path or ""
+                is_local = not (audio_path.startswith("http://") or audio_path.startswith("https://"))
+                if is_local and not Path(audio_path).is_file():
+                    db.delete(vo)
+                    invalidated_voiceover_scenes.append(scene_id)
+                    del voiceovers[scene_id]
+        if invalidated_voiceover_scenes:
+            video.stage = PipelineStage.VOICE
+            video.stage_detail = (
+                f"{len(invalidated_voiceover_scenes)} scene voiceover(s) were lost (local "
+                "disk wiped by a redeploy between generation and assembly) — regenerating them."
+            )
+            db.commit()
+            return
+
         missing = [
             s.order
             for s in scenes
