@@ -340,14 +340,31 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
             video.stage_detail = ""
             db.commit()
 
+        from pathlib import Path
+
         script = db.query(Script).filter(Script.video_id == video.id).one()
         scenes = script.scenes
-        done = {
-            c.scene_id
-            for c in db.query(VideoClip).filter(
-                VideoClip.video_id == video.id, VideoClip.status == JobStatus.SUCCEEDED
-            )
-        }
+        succeeded_clips = db.query(VideoClip).filter(
+            VideoClip.video_id == video.id, VideoClip.status == JobStatus.SUCCEEDED
+        )
+        done = set()
+        for c in succeeded_clips:
+            # Scene clips are deliberately never uploaded (see
+            # services/storage's module docstring — only the final
+            # video/captions/thumbnails are) and live solely on the worker's
+            # local disk, which is wiped on every redeploy. A video that sat
+            # between stages across a deploy can have a VideoClip the DB
+            # still calls SUCCEEDED whose file is simply gone — ASSEMBLY
+            # would otherwise crash on it far from here with no way to
+            # retry just that scene. Treat a missing file as not actually
+            # done: fail the stale record so a fresh clip gets generated.
+            clip_path = c.clip_path or ""
+            file_is_local = not (clip_path.startswith("http://") or clip_path.startswith("https://"))
+            if file_is_local and not Path(clip_path).is_file():
+                c.status = JobStatus.FAILED
+                continue
+            done.add(c.scene_id)
+        db.commit()
 
         for scene in scenes:
             if scene.id in done:
@@ -482,6 +499,32 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
         voiceovers = {
             v.scene_id: v for v in db.query(Voiceover).filter(Voiceover.video_id == video.id)
         }
+
+        # Scene clips live only on the worker's local disk (never uploaded —
+        # see services/storage's module docstring), which is wiped on every
+        # redeploy. VIDEO_GENERATION already checks this on its own entry,
+        # but a deploy can still land in the gap between it finishing and
+        # THIS stage actually running — the exact sequence that would have
+        # crashed on a real video otherwise. Catch it here too: a clip the
+        # DB still calls SUCCEEDED whose file is actually gone gets failed
+        # and the video sent back to VIDEO_GENERATION to regenerate it,
+        # instead of crashing on a bare FileNotFoundError below.
+        invalidated_clip_scenes = []
+        for scene_id, clip in list(clips.items()):
+            clip_path = clip.clip_path or ""
+            is_local = not (clip_path.startswith("http://") or clip_path.startswith("https://"))
+            if is_local and not Path(clip_path).is_file():
+                clip.status = JobStatus.FAILED
+                invalidated_clip_scenes.append(scene_id)
+                del clips[scene_id]
+        if invalidated_clip_scenes:
+            video.stage = PipelineStage.VIDEO_GENERATION
+            video.stage_detail = (
+                f"{len(invalidated_clip_scenes)} scene clip(s) were lost (local disk wiped by "
+                "a redeploy between generation and assembly) — regenerating them."
+            )
+            db.commit()
+            return
 
         missing = [
             s.order

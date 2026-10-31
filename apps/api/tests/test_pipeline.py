@@ -228,6 +228,11 @@ class _FakeVideoEngine(VideoEngine):
         self.calls.append(request)
         if on_submitted is not None:
             on_submitted(f"fake-job-{len(self.calls)}")
+        # Real engines always write real bytes to output_path — matched here
+        # so VIDEO_GENERATION's own clip-file-exists check (pipeline.py)
+        # doesn't treat every fake clip as lost local-disk state.
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(output_path).write_bytes(b"fake clip bytes")
         return SceneClipResult(clip_path=output_path, duration_seconds=request.duration_seconds)
 
 
@@ -319,6 +324,76 @@ def test_video_generation_stage_requests_measured_duration_not_original_estimate
     clips = db_session.query(VideoClip).filter(VideoClip.video_id == video.id).all()
     assert len(clips) == 2
     assert all(c.status == JobStatus.SUCCEEDED for c in clips)
+
+
+def test_video_generation_regenerates_a_succeeded_clip_whose_file_was_wiped(db_session):
+    # Scene clips live only on local disk (never uploaded — see
+    # services/storage) and that disk is wiped on every redeploy. A video
+    # that sat between runs across a deploy can have a VideoClip the DB
+    # still calls SUCCEEDED whose file is actually gone — this must be
+    # regenerated, not silently skipped (which would crash ASSEMBLY later)
+    # or silently trusted (same crash, just further downstream).
+    video, ctx, _fake_voice, fake_video = _advance_to_voice(db_session)
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VOICE -> VIDEO_GENERATION
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VIDEO_GENERATION -> ASSEMBLY
+    assert len(fake_video.calls) == 2
+
+    clips = db_session.query(VideoClip).filter(VideoClip.video_id == video.id).all()
+    wiped = clips[0]
+    Path(wiped.clip_path).unlink()  # simulate the worker's local disk being wiped
+    video.stage = PipelineStage.VIDEO_GENERATION
+    db_session.flush()
+
+    advance_one_stage(video, db_session, ctx, run_research=True)  # regenerates the wiped scene
+
+    assert video.stage.value == "assembly"
+    assert len(fake_video.calls) == 3  # one real new request for the wiped scene only
+    db_session.refresh(wiped)
+    assert wiped.status == JobStatus.FAILED  # the stale record, not reused
+    succeeded = (
+        db_session.query(VideoClip)
+        .filter(VideoClip.video_id == video.id, VideoClip.status == JobStatus.SUCCEEDED)
+        .all()
+    )
+    assert len(succeeded) == 2
+    assert all(Path(c.clip_path).is_file() for c in succeeded)
+
+
+def test_assembly_rewinds_to_video_generation_when_a_clip_file_is_missing(db_session, monkeypatch):
+    # A redeploy can land in the gap between VIDEO_GENERATION finishing and
+    # ASSEMBLY actually running (two separate job executions) — so ASSEMBLY
+    # needs its own check, not just VIDEO_GENERATION's. On finding a missing
+    # clip file it must send the video back to VIDEO_GENERATION rather than
+    # crashing on a stale path or silently muxing nothing.
+    video, ctx, _fake_voice, fake_video = _advance_to_voice(db_session)
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VOICE -> VIDEO_GENERATION
+    advance_one_stage(video, db_session, ctx, run_research=True)  # VIDEO_GENERATION -> ASSEMBLY
+    assert len(fake_video.calls) == 2
+
+    clips = db_session.query(VideoClip).filter(VideoClip.video_id == video.id).all()
+    wiped = clips[0]
+    Path(wiped.clip_path).unlink()
+
+    from services.rendering.ffmpeg import assembler
+
+    concat_calls = []
+    monkeypatch.setattr(assembler, "conform_clip_to_duration", lambda *a, **k: None)
+    monkeypatch.setattr(assembler, "mux_voiceover", lambda *a, **k: None)
+    monkeypatch.setattr(
+        assembler, "concat_clips", lambda *a, **k: concat_calls.append(a)
+    )
+
+    advance_one_stage(video, db_session, ctx, run_research=True)
+
+    assert video.stage.value == "video_generation"
+    assert "lost" in (video.stage_detail or "").lower()
+    assert concat_calls == []  # assembly never ran
+    db_session.refresh(wiped)
+    assert wiped.status == JobStatus.FAILED
+
+    advance_one_stage(video, db_session, ctx, run_research=True)  # regenerates the wiped scene
+    assert video.stage.value == "assembly"
+    assert len(fake_video.calls) == 3  # one real new request for the wiped scene only
 
 
 def test_assembly_stage_conforms_and_muxes_each_scene_before_concatenating(db_session, monkeypatch):
