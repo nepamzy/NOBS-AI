@@ -22,6 +22,72 @@ function emptyScene(): OwnScene {
   return { narration: "", visual_prompt: "", duration_seconds: 6, transition: "cut" };
 }
 
+const _TRANSITIONS: TransitionType[] = ["cut", "fade", "dissolve"];
+
+// Splits one pasted block of text (Title / Hook / "Scene N" headers /
+// Narration / Visual / Duration / Transition labels — the same shape this
+// app's own responses use) into structured fields, so pasting the whole
+// script does the separating instead of filling in each scene by hand.
+// Forgiving about label wording and whitespace; anything it can't confidently
+// label is just left for manual editing below rather than guessed at.
+function parseScriptText(text: string): { title: string; hook: string; scenes: OwnScene[] } {
+  let title = "";
+  let hook = "";
+  const sceneBlocks: string[][] = [];
+  let current: string[] | null = null;
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    if (/^scene\s*\d+\b/i.test(line)) {
+      current = [];
+      sceneBlocks.push(current);
+      continue;
+    }
+    if (current) {
+      current.push(line);
+      continue;
+    }
+    const titleMatch = /^title\s*:\s*(.*)$/i.exec(line);
+    if (titleMatch) {
+      title = titleMatch[1].trim();
+      continue;
+    }
+    const hookMatch = /^hook\s*:\s*(.*)$/i.exec(line);
+    if (hookMatch) hook = hookMatch[1].trim();
+  }
+
+  const scenes = sceneBlocks.map((block) => {
+    const scene = emptyScene();
+    for (const line of block) {
+      const narrationMatch = /^narration\s*:\s*(.*)$/i.exec(line);
+      if (narrationMatch) {
+        scene.narration = narrationMatch[1].trim();
+        continue;
+      }
+      const visualMatch = /^visual(?:\s*description)?\s*:\s*(.*)$/i.exec(line);
+      if (visualMatch) {
+        scene.visual_prompt = visualMatch[1].trim();
+        continue;
+      }
+      const durationMatch = /^duration\s*:\s*(\d+)/i.exec(line);
+      if (durationMatch) {
+        scene.duration_seconds = Number(durationMatch[1]);
+        continue;
+      }
+      const transitionMatch = /^transition\s*:\s*(\w+)/i.exec(line);
+      const transitionValue = transitionMatch?.[1].toLowerCase();
+      if (transitionValue && (_TRANSITIONS as string[]).includes(transitionValue)) {
+        scene.transition = transitionValue as TransitionType;
+      }
+    }
+    return scene;
+  });
+
+  return { title, hook, scenes: scenes.length ? scenes : [emptyScene()] };
+}
+
 // Not a real backend field — VideoCreate has no "content type". Picking one
 // here has a real effect anyway: it's folded into the topic actually sent
 // to research/script generation below, instead of being decorative.
@@ -44,11 +110,24 @@ export function CreateVideo() {
   const [stylePreset, setStylePreset] = useState("");
   const [runResearch, setRunResearch] = useState(true);
   const [hasOwnScript, setHasOwnScript] = useState(false);
+  const [rawScript, setRawScript] = useState("");
   const [scriptTitle, setScriptTitle] = useState("");
   const [scriptHook, setScriptHook] = useState("");
   const [ownScenes, setOwnScenes] = useState<OwnScene[]>([emptyScene()]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Re-parses on every change to the pasted block — no separate "split it
+  // up" step. Fields below stay editable afterward in case a line didn't
+  // parse the way it was meant to.
+  function handleRawScriptChange(value: string) {
+    setRawScript(value);
+    if (!value.trim()) return;
+    const parsed = parseScriptText(value);
+    setScriptTitle(parsed.title);
+    setScriptHook(parsed.hook);
+    setOwnScenes(parsed.scenes);
+  }
 
   function updateScene(index: number, patch: Partial<OwnScene>) {
     setOwnScenes((scenes) => scenes.map((s, i) => (i === index ? { ...s, ...patch } : s)));
@@ -207,9 +286,30 @@ export function CreateVideo() {
             {hasOwnScript && (
               <div className="mt-2 flex flex-col gap-4 rounded-lg border border-white/10 bg-black/20 p-4">
                 <p className="text-xs text-white/40">
-                  Paste your own scene-by-scene script. Skips Research and Script entirely —
-                  no LLM call, no spend — and goes straight to Storyboard for your approval.
+                  Skips Research and Script entirely — no LLM call, no spend — and goes
+                  straight to Storyboard for your approval.
                 </p>
+
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-sm text-white/70">Paste your whole script</span>
+                  <textarea
+                    value={rawScript}
+                    onChange={(e) => handleRawScriptChange(e.target.value)}
+                    placeholder={
+                      "Title: ...\nHook: ...\n\nScene 1\nNarration: ...\nVisual: ...\n" +
+                      "Duration: 6s\nTransition: Cut\n\nScene 2\nNarration: ...\nVisual: ...\n" +
+                      "Duration: 6s\nTransition: Fade"
+                    }
+                    rows={10}
+                    className="rounded-md border border-white/10 bg-black/20 px-3 py-2 font-mono text-xs text-white placeholder:text-white/30"
+                  />
+                  <span className="text-xs text-white/40">
+                    Paste it all in one go — Title / Hook / Scene N / Narration / Visual /
+                    Duration / Transition split out into the fields below automatically.
+                    Check they landed right before creating.
+                  </span>
+                </label>
+
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <label className="flex flex-col gap-1.5">
                     <span className="text-sm text-white/70">Title (optional)</span>
