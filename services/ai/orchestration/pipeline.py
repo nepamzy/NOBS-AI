@@ -645,6 +645,7 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
         output_dir = Path(ctx.storage_root) / str(video.id) / "assembly"
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        created_thumbnails: list[tuple[Thumbnail, Asset]] = []
         try:
             # Three candidate frames pulled straight from the finished video
             # as thumbnail options (A/B/C) — no separate paid image-generation
@@ -654,15 +655,16 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
                 extract_frame(
                     video.final_video_path, round(total_duration * fraction, 2), image_path
                 )
-                db.add(Thumbnail(video_id=video.id, image_path=image_path, variant_label=label))
-                db.add(
-                    Asset(
-                        video_id=video.id,
-                        asset_type=AssetType.THUMBNAIL,
-                        path=image_path,
-                        label=f"Thumbnail {label}",
-                    )
+                thumbnail = Thumbnail(video_id=video.id, image_path=image_path, variant_label=label)
+                asset = Asset(
+                    video_id=video.id,
+                    asset_type=AssetType.THUMBNAIL,
+                    path=image_path,
+                    label=f"Thumbnail {label}",
                 )
+                db.add(thumbnail)
+                db.add(asset)
+                created_thumbnails.append((thumbnail, asset))
         except AssemblyError as exc:
             _block(video, db, "thumbnail", f"ffmpeg thumbnail extraction failed: {exc}")
 
@@ -682,16 +684,20 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
             captions_asset.path = ctx.storage_backend.upload(
                 captions_asset.path, f"{video.id}/captions.srt"
             )
-        for thumbnail in db.query(Thumbnail).filter(Thumbnail.video_id == video.id):
+        # Mutates the objects created above directly, NOT a fresh
+        # db.query(Thumbnail)/.update() — this session is autoflush=False
+        # (app/db.py), so a query or bulk update run here (no commit since
+        # the db.add() calls above) would silently touch zero rows and
+        # upload nothing, exactly the bug that shipped: the thumbnails
+        # stayed on local disk while final.mp4 uploaded fine (a plain
+        # attribute reassignment on an object already in hand, no query
+        # involved).
+        for thumbnail, asset in created_thumbnails:
             uploaded_url = ctx.storage_backend.upload(
                 thumbnail.image_path, f"{video.id}/thumbnail_{thumbnail.variant_label}.jpg"
             )
             thumbnail.image_path = uploaded_url
-            db.query(Asset).filter(
-                Asset.video_id == video.id,
-                Asset.asset_type == AssetType.THUMBNAIL,
-                Asset.label == f"Thumbnail {thumbnail.variant_label}",
-            ).update({"path": uploaded_url})
+            asset.path = uploaded_url
 
         video.stage = PipelineStage.COMPLETED
         video.stage_detail = ""

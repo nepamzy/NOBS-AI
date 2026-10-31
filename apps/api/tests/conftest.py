@@ -80,10 +80,19 @@ def _reset_rate_limits():
 @pytest.fixture
 def db_session(db_engine) -> Session:
     """One test = one transaction, rolled back at the end, so tests don't
-    leak state into each other without needing to truncate every table."""
+    leak state into each other without needing to truncate every table.
+
+    autoflush=False matches app/db.py's real SessionLocal exactly — a
+    default (autoflush=True) test session silently masked a real bug
+    (pipeline.py's THUMBNAIL stage re-querying rows it had just db.add()'d
+    in the same call, finding none under the real session's autoflush=False
+    and uploading nothing) that every test here passed regardless, because
+    the test session auto-flushed those pending inserts before the
+    assertions' own queries ran — something production's session never
+    does. Keep this matched to SessionLocal's settings going forward."""
     connection = db_engine.connect()
     transaction = connection.begin()
-    session = sessionmaker(bind=connection)()
+    session = sessionmaker(bind=connection, autoflush=False)()
 
     yield session
 
