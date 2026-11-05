@@ -310,6 +310,7 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+  deleteSourceVideo: (id: string) => request<void>(`/source-videos/${id}`, { method: "DELETE" }),
   listClips: (sourceVideoId: string) =>
     request<Clip[]>(`/source-videos/${sourceVideoId}/clips`),
   publishClip: (clipId: string) => request<Clip>(`/clips/${clipId}/publish`, { method: "POST" }),

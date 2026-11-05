@@ -1,4 +1,4 @@
-import { Scissors, Upload } from "lucide-react";
+import { Scissors, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, errorMessage, resolveStorageUrl } from "../api/client";
 import type { Clip, ClipJobStage, SourceVideo } from "../api/types";
@@ -256,6 +256,22 @@ function SourceVideoCard({
   onChange: () => void;
 }) {
   const [togglingAuto, setTogglingAuto] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    const confirmed = window.confirm(
+      `Delete "${sourceVideo.original_filename}"? This removes the upload and any clips cut ` +
+        "from it. This can't be undone.",
+    );
+    if (!confirmed) return;
+    setDeleting(true);
+    try {
+      await api.deleteSourceVideo(sourceVideo.id);
+      onChange();
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   async function toggleAutoPublish() {
     if (sourceVideo.auto_publish) {
@@ -298,6 +314,14 @@ function SourceVideoCard({
           }`}
         >
           {sourceVideo.auto_publish ? "Auto-ship: ON" : "Auto-ship: OFF"}
+        </button>
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          title="Delete this upload and any clips cut from it"
+          className="shrink-0 rounded-md border border-white/10 p-1.5 text-white/40 transition-colors hover:border-red-500/40 hover:text-red-400 disabled:opacity-50"
+        >
+          <Trash2 size={14} />
         </button>
       </div>
 

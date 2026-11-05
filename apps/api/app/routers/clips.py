@@ -155,6 +155,22 @@ def update_source_video(
     return source_video
 
 
+@router.delete("/source-videos/{source_video_id}", status_code=204)
+def delete_source_video(
+    source_video_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> None:
+    """Removes an upload and any clips already cut from it — e.g. one stuck
+    at UPLOADED forever after the worker crashed mid-run. Clip rows cascade
+    (see SourceVideo.clips' cascade="all, delete-orphan"); the underlying
+    files in storage are left in place, same as nothing else in this app
+    scrubs storage on delete."""
+    source_video = _owned_source_video_or_404(db, source_video_id, user)
+    db.delete(source_video)
+    db.commit()
+
+
 @router.get("/source-videos/{source_video_id}/clips", response_model=list[ClipRead])
 def list_clips(
     source_video_id: uuid.UUID,
