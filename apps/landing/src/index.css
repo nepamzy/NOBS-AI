@@ -1,0 +1,71 @@
+@import "tailwindcss";
+@import "@fontsource/sora/600.css";
+@import "@fontsource/sora/700.css";
+@import "@fontsource/sora/800.css";
+
+@theme {
+  --font-heading: "Sora", ui-sans-serif, system-ui, sans-serif;
+
+  /* Same brand accent as the main app (apps/web/src/index.css) — kept in
+     sync on purpose so the public site and the product don't feel like
+     two different companies. */
+  --color-accent-300: #9b5cff;
+  --color-accent-400: #a78bfa;
+  --color-accent-500: #8b5cf6;
+  --color-accent-600: #7c3aed;
+
+  --color-canvas: #090d1b;
+  --color-panel: #11172b;
+  --color-panel-border: #ffffff1a;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: #e6e8eb;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--color-accent-500);
+  color: white;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent-400);
+  outline-offset: 2px;
+}
+
+/* Soft radial glow used behind hero/section headers — a cheap, GPU-free
+   stand-in for depth so the page still feels alive before the 3D canvas
+   mounts (or on a device that skips it, see Scene3D's reduced-motion
+   fallback). */
+.glow-backdrop {
+  background: radial-gradient(
+    60% 50% at 50% 0%,
+    color-mix(in srgb, var(--color-accent-500) 28%, transparent),
+    transparent 70%
+  );
+}
+
+.text-gradient {
+  background: linear-gradient(120deg, #fff 10%, var(--color-accent-300) 60%, var(--color-accent-500) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
