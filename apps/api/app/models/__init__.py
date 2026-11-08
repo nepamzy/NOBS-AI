@@ -17,6 +17,7 @@ from app.models.video import Video
 from app.models.video_clip import VideoClip
 from app.models.video_feedback import VideoFeedback
 from app.models.voiceover import Voiceover
+from app.models.waitlist_signup import WaitlistSignup
 
 __all__ = [
     "Asset",
@@ -42,4 +43,5 @@ __all__ = [
     "VideoClip",
     "VideoFeedback",
     "Voiceover",
+    "WaitlistSignup",
 ]

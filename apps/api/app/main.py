@@ -23,6 +23,7 @@ from app.routers import (
     upload_schedule,
     videos,
     voices,
+    waitlist,
 )
 from app.routers import settings as settings_router
 
@@ -60,6 +61,7 @@ app.include_router(styles.router)
 app.include_router(upload_schedule.router)
 app.include_router(videos.router)
 app.include_router(voices.router)
+app.include_router(waitlist.router)
 
 # Serves generated voiceovers/clips/captions/thumbnails/final videos so the
 # frontend can actually load them (see app/storage.py) — only meaningful for
