@@ -12,6 +12,17 @@ export class ApiError extends Error {
   }
 }
 
+// Points the browser straight at the backend's redirect endpoint (see
+// apps/api/app/routers/waitlist_oauth.py) rather than fetching it — this
+// has to be a real navigation so Google's consent screen can load. If
+// GOOGLE_WAITLIST_CLIENT_ID isn't configured yet, that endpoint redirects
+// back here with ?oauth_error=not_configured instead of erroring, so the
+// button always does *something* reasonable even before Nobert finishes
+// the Google Cloud setup.
+export function googleOAuthStartUrl(provider: "google" | "youtube"): string {
+  return `${BASE_URL}/waitlist/oauth/${provider}/start`;
+}
+
 export async function joinWaitlist(email: string, name: string): Promise<void> {
   const response = await fetch(`${BASE_URL}/waitlist`, {
     method: "POST",

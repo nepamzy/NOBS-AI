@@ -20,4 +20,6 @@ class WaitlistSignupRead(BaseModel):
     id: uuid.UUID
     email: str
     name: str
+    source: str
+    youtube_channel_title: str | None
     created_at: datetime

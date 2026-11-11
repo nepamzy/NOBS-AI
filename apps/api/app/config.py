@@ -127,6 +127,24 @@ class Settings(BaseSettings):
     clips_youtube_client_secret: str = ""
     clips_youtube_refresh_token: str = ""
 
+    # --- Public waitlist "Continue with Google / YouTube" (apps/landing) ---
+    # A SEPARATE OAuth client from Gmail/YouTube's connectors above — those
+    # are pre-authorized once for Nobert's own account (a refresh token
+    # pasted in by hand); this one runs a live OAuth consent screen for
+    # strangers clicking a public button, so it needs its own public-redirect
+    # Client ID/Secret. See GOOGLE_WAITLIST_OAUTH_SETUP.md — including the
+    # real limitation on the "youtube" variant (Google's sensitive-scope
+    # verification process for youtube.readonly, which isn't instant or
+    # guaranteed for a small/unverified app).
+    google_waitlist_client_id: str = ""
+    google_waitlist_client_secret: str = ""
+    # This backend's own public URL — used to build the OAuth redirect_uri,
+    # must exactly match what's registered in Google Cloud Console.
+    api_base_url: str = "http://localhost:8000"
+    # The public landing app (apps/landing) — where the browser is sent back
+    # to after Google's consent screen, success or failure.
+    landing_base_url: str = "http://localhost:5173"
+
     # --- Auth ---
     # Peppers PIN-code and session-token hashes so a stolen DB dump alone
     # doesn't reveal valid codes/tokens. Must be set for auth to work at all

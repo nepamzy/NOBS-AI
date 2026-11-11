@@ -17,6 +17,14 @@
   --color-canvas: #090d1b;
   --color-panel: #11172b;
   --color-panel-border: #ffffff1a;
+
+  /* Gold CTA accent — matches the mockups' "Join Waitlist" buttons and
+     checkmarks, kept separate from the purple brand accent above so both
+     can be used side by side the way the mockups do. */
+  --color-gold-300: #ffe27a;
+  --color-gold-400: #ffd645;
+  --color-gold-500: #f5b800;
+  --color-gold-600: #d99a00;
 }
 
 :root {
