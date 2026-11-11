@@ -73,6 +73,16 @@ def test_synthesizes_real_call_measures_duration_and_transcribes_words(tmp_path,
     assert result.word_timestamps[1] == {"word": "there", "start": 0.4, "end": 0.9}
 
 
+def test_uses_a_lightweight_whisper_model_for_timestamp_confirmation():
+    # Real incident: the default "small" model (clipping's own default)
+    # OOM-killed the 512MB worker mid-job with no exception raised, leaving
+    # a video silently stuck at VOICE forever. This only needs to confirm
+    # timing of already-known text, not recognize unclear speech, so "tiny"
+    # is plenty — and leaves real memory headroom instead of none.
+    engine = ChatterboxEngine(api_url="http://localhost:9000")
+    assert engine._transcriber._model_size == "tiny"
+
+
 def test_factory_builds_chatterbox_with_voice_map():
     engine = get_voice_engine(
         "chatterbox", "http://localhost:9000", "", "{}", '{"warm-narrator": "voice.wav"}'

@@ -31,7 +31,19 @@ class ChatterboxEngine(VoiceEngine):
         # Free local compute, same engine/model the clipping feature uses —
         # not an approval-gated call, same reasoning as faster-whisper's own
         # adapter docstring.
-        self._transcriber = LocalWhisperEngine()
+        #
+        # "tiny" here, not the "small" default clipping uses: this call is
+        # only confirming WHEN each word of an already-known script lands in
+        # audio we just generated, not recognizing unclear human speech, so
+        # it doesn't need "small"'s accuracy. It does need to fit in the
+        # worker's 512MB — confirmed by a real incident (Render's own event
+        # log: oomKilled, memoryLimit 512Mi) where "small" loading here, on
+        # top of the worker's own footprint, killed the process mid-job with
+        # no exception raised (a SIGKILL gives no chance to log one), so the
+        # video just sat at VOICE forever with no error — nothing to retry,
+        # nothing to see. "tiny" leaves real headroom instead of sitting
+        # right at the edge of getting killed again.
+        self._transcriber = LocalWhisperEngine(model_size="tiny")
 
     def synthesize(self, text: str, voice_preset: str, output_path: str) -> VoiceoverResult:
         if not self._api_url:
