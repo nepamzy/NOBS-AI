@@ -38,6 +38,7 @@ const FEATURES = [
   },
   {
     icon: Bot,
+    iconSrc: "/icons/ai-robot.png",
     title: "AI Assistant",
     body: "Get help, ideas and suggestions while you create.",
   },
@@ -118,9 +119,13 @@ export function Features() {
               className="scroll-mt-24 rounded-2xl border border-white/10 bg-panel p-6"
             >
               <div className="flex items-center justify-between">
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-accent-600 to-accent-400">
-                  <f.icon size={20} className="text-white" />
-                </span>
+                {"iconSrc" in f ? (
+                  <img src={f.iconSrc} alt="" className="h-11 w-11 rounded-xl" />
+                ) : (
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-accent-600 to-accent-400">
+                    <f.icon size={20} className="text-white" />
+                  </span>
+                )}
                 {"comingSoon" in f && f.comingSoon && (
                   <span className="rounded-full bg-gold-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-gold-400">
                     Coming Soon

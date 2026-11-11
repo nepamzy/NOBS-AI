@@ -37,7 +37,7 @@ const SIDEBAR = [
 const PLATFORM_FEATURES = [
   { icon: Clapperboard, title: "AI Video Creation", body: "Turn your ideas into stunning videos with AI." },
   { icon: Scissors, title: "Smart Clipping", body: "Find the best moments automatically." },
-  { icon: Bot, title: "AI Assistant", body: "Get help, ideas and suggestions." },
+  { icon: Bot, iconSrc: "/icons/ai-robot.png", title: "AI Assistant", body: "Get help, ideas and suggestions." },
   { icon: ImagePlus, title: "Custom Thumbnails", body: "Create eye-catching thumbnails easily." },
   { icon: UploadCloud, title: "Direct Publishing", body: "Upload to YouTube — more platforms on the way." },
 ] as const;
@@ -167,9 +167,13 @@ export function Platform() {
                 transition={{ duration: 0.4, delay: i * 0.05 }}
                 className="rounded-2xl border border-white/10 bg-panel p-5"
               >
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-accent-600 to-accent-400">
-                  <f.icon size={18} className="text-white" />
-                </span>
+                {"iconSrc" in f ? (
+                  <img src={f.iconSrc} alt="" className="h-10 w-10 rounded-xl" />
+                ) : (
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-accent-600 to-accent-400">
+                    <f.icon size={18} className="text-white" />
+                  </span>
+                )}
                 <h3 className="mt-3 font-heading text-sm font-semibold text-white">{f.title}</h3>
                 <p className="mt-1.5 text-xs leading-relaxed text-white/55">{f.body}</p>
               </motion.div>
