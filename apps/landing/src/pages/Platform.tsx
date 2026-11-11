@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { CommunityCta } from "../components/CommunityCta";
+import { HERO_PHOTOS } from "../heroPhotos";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
@@ -88,8 +89,13 @@ export function Platform() {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.7, delay: 0.1 }}
-            className="glow-backdrop rounded-2xl border border-white/10 bg-panel p-3 shadow-2xl"
+            className="glow-backdrop relative rounded-2xl border border-white/10 bg-panel p-3 shadow-2xl"
           >
+            <img
+              src={HERO_PHOTOS.pointingMan.src}
+              alt={HERO_PHOTOS.pointingMan.alt}
+              className="absolute -right-4 -top-6 hidden h-28 w-28 rounded-2xl border-2 border-panel object-cover shadow-xl sm:block"
+            />
             <div className="flex overflow-hidden rounded-xl border border-white/10 bg-black/30">
               <aside className="hidden w-40 flex-col gap-1 border-r border-white/10 bg-black/20 p-3 sm:flex">
                 {SIDEBAR.map((item) => (

@@ -14,6 +14,7 @@ import {
 import { CommunityCta } from "../components/CommunityCta";
 import { HeroVisual } from "../components/HeroVisual";
 import { WhyChoose } from "../components/WhyChoose";
+import { HERO_PHOTOS } from "../heroPhotos";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
@@ -94,7 +95,11 @@ export function Features() {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.8, delay: 0.1 }}
           >
-            <HeroVisual icon={Clapperboard} className="h-[280px] sm:h-[340px]" />
+            <HeroVisual
+              photoSrc={HERO_PHOTOS.headphonesWoman.src}
+              photoAlt={HERO_PHOTOS.headphonesWoman.alt}
+              className="h-[280px] sm:h-[340px]"
+            />
           </motion.div>
         </div>
       </section>

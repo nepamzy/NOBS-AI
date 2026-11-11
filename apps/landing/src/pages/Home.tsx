@@ -5,6 +5,7 @@ import { CommunityCta } from "../components/CommunityCta";
 import { GoalStats } from "../components/GoalStats";
 import { HeroVisual } from "../components/HeroVisual";
 import { WaitlistInlineForm } from "../components/WaitlistInlineForm";
+import { HERO_PHOTOS } from "../heroPhotos";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 24 },
@@ -66,7 +67,11 @@ export function Home() {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.8, ease: "easeOut", delay: 0.1 }}
           >
-            <HeroVisual icon={Bot} className="h-[300px] sm:h-[380px]" />
+            <HeroVisual
+              photoSrc={HERO_PHOTOS.phoneMan.src}
+              photoAlt={HERO_PHOTOS.phoneMan.alt}
+              className="h-[300px] sm:h-[380px]"
+            />
           </motion.div>
         </div>
       </section>

@@ -5,7 +5,6 @@ import {
   Clapperboard,
   Lightbulb,
   Rocket,
-  Sparkles,
   Wand2,
   Zap,
 } from "lucide-react";
@@ -14,6 +13,7 @@ import { CommunityCta } from "../components/CommunityCta";
 import { GoalStats } from "../components/GoalStats";
 import { HeroVisual } from "../components/HeroVisual";
 import { WhyChoose } from "../components/WhyChoose";
+import { HERO_PHOTOS } from "../heroPhotos";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
@@ -88,7 +88,11 @@ export function HowItWorks() {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.8, delay: 0.1 }}
           >
-            <HeroVisual icon={Sparkles} className="h-[280px] sm:h-[340px]" />
+            <HeroVisual
+              photoSrc={HERO_PHOTOS.phoneMan.src}
+              photoAlt={HERO_PHOTOS.phoneMan.alt}
+              className="h-[280px] sm:h-[340px]"
+            />
           </motion.div>
         </div>
       </section>

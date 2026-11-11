@@ -1,9 +1,10 @@
 import { motion } from "framer-motion";
-import { Compass, Gem, Rocket, Star, Target } from "lucide-react";
+import { Gem, Rocket, Star, Target } from "lucide-react";
 import { Link } from "react-router-dom";
 import { CommunityCta } from "../components/CommunityCta";
 import { GoalStats } from "../components/GoalStats";
 import { HeroVisual } from "../components/HeroVisual";
+import { HERO_PHOTOS } from "../heroPhotos";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
@@ -45,7 +46,11 @@ export function About() {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.8, delay: 0.1 }}
           >
-            <HeroVisual icon={Compass} className="h-[280px] sm:h-[340px]" />
+            <HeroVisual
+              photoSrc={HERO_PHOTOS.pointingMan.src}
+              photoAlt={HERO_PHOTOS.pointingMan.alt}
+              className="h-[280px] sm:h-[340px]"
+            />
           </motion.div>
         </div>
       </section>
