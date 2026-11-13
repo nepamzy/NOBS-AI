@@ -179,7 +179,7 @@ export function VideoDetail() {
   return (
     <div className="max-w-5xl">
       <nav className="text-xs text-white/40">
-        <Link to="/" className="hover:text-white/70">
+        <Link to="/dashboard" className="hover:text-white/70">
           Home
         </Link>{" "}
         / <Link to={`/projects/${video.project_id}`} className="hover:text-white/70">My Projects</Link> /{" "}

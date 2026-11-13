@@ -26,9 +26,9 @@ function ScrollManager() {
   return null;
 }
 
-export function Layout() {
+export function LandingLayout() {
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="landing-root flex min-h-screen flex-col overflow-x-clip">
       <ScrollManager />
       <NavBar />
       <main className="flex-1">

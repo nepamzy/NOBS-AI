@@ -21,7 +21,7 @@ import { useAuth } from "../auth/AuthContext";
 import { Logo } from "./Logo";
 
 const links: { to: string; label: string; end?: boolean; icon: LucideIcon }[] = [
-  { to: "/", label: "Home", end: true, icon: Home },
+  { to: "/dashboard", label: "Home", end: true, icon: Home },
   { to: "/create", label: "Create Video", icon: PlusCircle },
   { to: "/projects", label: "My Projects", icon: FolderKanban },
   { to: "/library", label: "Video Library", icon: PlaySquare },

@@ -127,7 +127,7 @@ class Settings(BaseSettings):
     clips_youtube_client_secret: str = ""
     clips_youtube_refresh_token: str = ""
 
-    # --- Public waitlist "Continue with Google / YouTube" (apps/landing) ---
+    # --- Public waitlist "Continue with Google / YouTube" (apps/web/src/landing) ---
     # A SEPARATE OAuth client from Gmail/YouTube's connectors above — those
     # are pre-authorized once for Nobert's own account (a refresh token
     # pasted in by hand); this one runs a live OAuth consent screen for
@@ -141,7 +141,8 @@ class Settings(BaseSettings):
     # This backend's own public URL — used to build the OAuth redirect_uri,
     # must exactly match what's registered in Google Cloud Console.
     api_base_url: str = "http://localhost:8000"
-    # The public landing app (apps/landing) — where the browser is sent back
+    # The public site (landing pages live in apps/web, same URL as the dashboard) —
+    # where the browser is sent back
     # to after Google's consent screen, success or failure.
     landing_base_url: str = "http://localhost:5173"
 

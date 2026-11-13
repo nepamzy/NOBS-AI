@@ -20,7 +20,7 @@ export function Signup() {
     setError(null);
     try {
       await signup(pinCode, email, password, displayName);
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
     } finally {

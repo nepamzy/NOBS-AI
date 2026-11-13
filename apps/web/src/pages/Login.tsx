@@ -1,17 +1,24 @@
 import { useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { Logo } from "../components/Logo";
 
 export function Login() {
-  const { login } = useAuth();
+  const { user, loading, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Already signed in (e.g. tapped the logo again from the landing page):
+  // no need to show the form.
+  if (!loading && user && !submitting) {
+    const from = (location.state as { from?: Location })?.from;
+    return <Navigate to={from ? `${from.pathname}${from.search}` : "/dashboard"} replace />;
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -20,7 +27,7 @@ export function Login() {
     try {
       await login(email, password);
       const from = (location.state as { from?: Location })?.from;
-      navigate(from ? `${from.pathname}${from.search}` : "/", { replace: true });
+      navigate(from ? `${from.pathname}${from.search}` : "/dashboard", { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
     } finally {

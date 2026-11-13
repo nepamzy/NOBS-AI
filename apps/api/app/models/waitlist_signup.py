@@ -7,7 +7,7 @@ from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 
 class WaitlistSignup(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """One email from the public landing page's "join the waitlist" form
-    (apps/landing) — not a user account, no auth, no token_balance. Just a
+    (apps/web/src/landing) — not a user account, no auth, no token_balance. Just a
     contact to email once NOBS AI opens up beyond the current private
     testing (CLAUDE.md Part 2 — V1 is single-user; this is how interest
     from outside people gets captured for V2+ without building real

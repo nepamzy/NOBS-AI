@@ -1,5 +1,5 @@
 """Public "Continue with Google / Continue with YouTube" sign-in for the
-waitlist page (apps/landing) — NOT the same thing as the Gmail or YouTube
+waitlist page (apps/web/src/landing) — NOT the same thing as the Gmail or YouTube
 connectors in services/connectors/gmail and services/connectors/youtube.
 Those are pre-authorized once, by Nobert, for his own account (a refresh
 token pasted into Render by hand). This one runs a real, live OAuth

@@ -1,6 +1,6 @@
 # Waitlist "Continue with Google / YouTube" setup
 
-The public landing page (apps/landing, `/waitlist`) has two sign-in buttons
+The public landing pages (apps/web/src/landing, `/waitlist`) has two sign-in buttons
 alongside the plain email form: "Continue with Google" and "Continue with
 YouTube." Both are code-complete and gated exactly like every other
 external engine in this app (Wan, Chatterbox, the Gmail/GitHub/Vercel
@@ -71,7 +71,7 @@ gone through Google's verification, if you decide that's worth it.
 GOOGLE_WAITLIST_CLIENT_ID=<from step 6>
 GOOGLE_WAITLIST_CLIENT_SECRET=<from step 6>
 API_BASE_URL=<your Render backend's public URL, e.g. https://nobs-ai-api.onrender.com>
-LANDING_BASE_URL=<your deployed landing page's URL, e.g. https://nobs-ai-landing.vercel.app>
+LANDING_BASE_URL=<the public site URL — the same site as the dashboard, e.g. https://nobs-ai.vercel.app>
 ```
 
 `API_BASE_URL` must exactly match the redirect URIs registered in step 5 —

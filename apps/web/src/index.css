@@ -20,6 +20,14 @@
   --color-canvas: #090d1b;
   --color-panel: #11172b;
   --color-panel-border: #ffffff1a;
+
+  /* Gold CTA accent used by the public landing pages (src/landing) — the
+     "Join Waitlist" buttons, checkmarks and badges. Kept separate from the
+     violet brand accent so both can sit side by side. */
+  --color-gold-300: #ffe27a;
+  --color-gold-400: #ffd645;
+  --color-gold-500: #f5b800;
+  --color-gold-600: #d99a00;
 }
 
 :root {
@@ -70,4 +78,27 @@ body {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* --- Public landing pages (src/landing) --- */
+
+.landing-root * {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Soft radial glow behind hero/section headers — a cheap, GPU-free stand-in
+   for depth. */
+.glow-backdrop {
+  background: radial-gradient(
+    60% 50% at 50% 0%,
+    color-mix(in srgb, var(--color-accent-500) 28%, transparent),
+    transparent 70%
+  );
+}
+
+.text-gradient {
+  background: linear-gradient(120deg, #fff 10%, var(--color-accent-300) 60%, var(--color-accent-500) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }

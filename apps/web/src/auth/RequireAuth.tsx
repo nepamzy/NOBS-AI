@@ -17,7 +17,7 @@ export function RequireAdmin() {
 
   if (loading) return <LoadingState />;
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role !== "admin") return <Navigate to="/" replace />;
+  if (user.role !== "admin") return <Navigate to="/dashboard" replace />;
 
   return <Outlet />;
 }

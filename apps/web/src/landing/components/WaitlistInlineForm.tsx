@@ -1,7 +1,7 @@
 import { CheckCircle2, Lock } from "lucide-react";
 import type { FormEvent } from "react";
 import { useState } from "react";
-import { ApiError, googleOAuthStartUrl, joinWaitlist } from "../api/client";
+import { ApiError, googleOAuthStartUrl, joinWaitlist } from "../api";
 
 // Shared by the Home page's compact waitlist card and the full /waitlist
 // page — same form, same two OAuth buttons, so there's one place to fix

@@ -1,4 +1,5 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { lazy, Suspense } from "react";
+import { Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { RequireAdmin, RequireAuth } from "./auth/RequireAuth";
 import { AdminDashboard } from "./pages/AdminDashboard";
@@ -18,6 +19,12 @@ import { SpendDashboard } from "./pages/SpendDashboard";
 import { VideoDetail } from "./pages/VideoDetail";
 import { VideoLibrary } from "./pages/VideoLibrary";
 
+// The public landing pages. Lazy so the admin app's bundle doesn't carry
+// the marketing site's animation library for every dashboard load.
+const LandingSite = lazy(() =>
+  import("./landing/LandingSite").then((m) => ({ default: m.LandingSite })),
+);
+
 export function App() {
   return (
     <Routes>
@@ -25,7 +32,7 @@ export function App() {
       <Route path="/signup" element={<Signup />} />
       <Route element={<RequireAuth />}>
         <Route element={<Layout />}>
-          <Route index element={<Dashboard />} />
+          <Route path="dashboard" element={<Dashboard />} />
           <Route path="create" element={<CreateVideo />} />
           <Route path="clips" element={<Clips />} />
           <Route path="assistant" element={<Assistant />} />
@@ -41,9 +48,18 @@ export function App() {
             <Route path="spend" element={<SpendDashboard />} />
             <Route path="connections" element={<ChannelConnections />} />
           </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Route>
+      {/* Lowest-priority catch-all: "/" and every public page (/features,
+          /about, ...) show the landing site; unknown URLs land there too. */}
+      <Route
+        path="/*"
+        element={
+          <Suspense fallback={null}>
+            <LandingSite />
+          </Suspense>
+        }
+      />
     </Routes>
   );
 }

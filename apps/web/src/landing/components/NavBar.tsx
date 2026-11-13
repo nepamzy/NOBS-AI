@@ -1,12 +1,12 @@
 import { ChevronDown, Menu, X } from "lucide-react";
 import { useRef, useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 
-// Where the real product lives — tapping the logo 3x in a row is the
-// hidden door back to it for Nobert, never advertised anywhere on the
-// page itself. Override via VITE_APP_LOGIN_URL if the app ever moves.
-const APP_LOGIN_URL = import.meta.env.VITE_APP_LOGIN_URL ?? "https://nobs-ai.vercel.app/login";
-const TRIPLE_TAP_WINDOW_MS = 600;
+// Hidden door to the admin login: tapping the logo 4 times in a row (each tap
+// within TAP_WINDOW_MS of the last) opens /login, which signs in to the
+// dashboard. Nothing on the public pages links to it.
+const SECRET_TAP_COUNT = 4;
+const TAP_WINDOW_MS = 700;
 
 const TABS = [
   { to: "/", label: "Home" },
@@ -34,6 +34,7 @@ const TRAILING_TABS = [
 const ALL_MOBILE_TABS = [...TABS, ...FOR_YOU_ITEMS, ...TRAILING_TABS];
 
 export function NavBar() {
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [forYouOpen, setForYouOpen] = useState(false);
   const tapCount = useRef(0);
@@ -44,14 +45,14 @@ export function NavBar() {
     tapCount.current += 1;
     if (tapTimer.current) clearTimeout(tapTimer.current);
 
-    if (tapCount.current >= 3) {
+    if (tapCount.current >= SECRET_TAP_COUNT) {
       tapCount.current = 0;
-      window.location.href = APP_LOGIN_URL;
+      navigate("/login");
       return;
     }
     tapTimer.current = setTimeout(() => {
       tapCount.current = 0;
-    }, TRIPLE_TAP_WINDOW_MS);
+    }, TAP_WINDOW_MS);
   }
 
   function openForYou() {
