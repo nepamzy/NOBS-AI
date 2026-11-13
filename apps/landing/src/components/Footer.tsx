@@ -15,7 +15,7 @@ export function Footer() {
     <footer className="border-t border-white/10 px-5 py-10">
       <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 text-center sm:flex-row sm:items-start sm:justify-between sm:text-left">
         <div className="flex items-center gap-2">
-          <img src="/logo-mark.svg" alt="" width={26} height={26} />
+          <img src="/logo-mark.png" alt="" width={28} height={28} />
           <span className="font-heading text-sm font-semibold text-white">
             NOBS <span className="text-gold-400">AI</span>
           </span>
