@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { BuiltByBadge } from "./BuiltByBadge";
 
 const LINKS = [
   { to: "/platform", label: "Our Platform" },
@@ -14,7 +15,7 @@ export function Footer() {
     <footer className="border-t border-white/10 px-5 py-10">
       <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 text-center sm:flex-row sm:items-start sm:justify-between sm:text-left">
         <div className="flex items-center gap-2">
-          <img src="/logo-mark.png" alt="" width={20} height={20} />
+          <img src="/logo-mark.svg" alt="" width={26} height={26} />
           <span className="font-heading text-sm font-semibold text-white">
             NOBS <span className="text-gold-400">AI</span>
           </span>
@@ -35,9 +36,12 @@ export function Footer() {
           Join Waitlist →
         </Link>
       </div>
-      <p className="mx-auto mt-6 max-w-6xl text-center text-[11px] text-white/35 sm:text-left">
-        © {new Date().getFullYear()} NOBS AI. Not yet open to the public.
-      </p>
+      <div className="mx-auto mt-6 flex max-w-6xl flex-col items-center gap-4 sm:flex-row sm:justify-between">
+        <p className="text-center text-[11px] text-white/35 sm:text-left">
+          © {new Date().getFullYear()} NOBS AI. Not yet open to the public.
+        </p>
+        <BuiltByBadge />
+      </div>
     </footer>
   );
 }

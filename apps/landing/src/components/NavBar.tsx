@@ -76,7 +76,7 @@ export function NavBar() {
           className="flex items-center gap-2 rounded-md transition-opacity hover:opacity-80 active:opacity-60"
           aria-label="NOBS AI"
         >
-          <img src="/logo-mark.png" alt="" width={28} height={28} />
+          <img src="/logo-mark.svg" alt="" width={36} height={36} />
           <span className="font-heading text-lg font-bold text-white">
             NOBS <span className="text-gold-400">AI</span>
           </span>
