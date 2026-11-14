@@ -55,11 +55,19 @@ class VideoRead(BaseModel):
     youtube_published: bool
     created_at: datetime
     updated_at: datetime
+    # Not a column: list_videos() sets it from ONE query over all returned
+    # videos, so the dashboard/library don't need a /assets request per video.
+    thumbnail_path: str | None = Field(default=None, exclude=True)
 
     @computed_field
     @property
     def final_video_url(self) -> str | None:
         return to_url(self.final_video_path)
+
+    @computed_field
+    @property
+    def thumbnail_url(self) -> str | None:
+        return to_url(self.thumbnail_path)
 
 
 class ClipRecoverRequest(BaseModel):

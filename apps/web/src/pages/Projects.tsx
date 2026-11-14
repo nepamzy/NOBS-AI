@@ -45,7 +45,6 @@ function timeAgo(iso: string): string {
 export function Projects() {
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [videos, setVideos] = useState<Video[]>([]);
-  const [thumbnails, setThumbnails] = useState<Record<string, string | null>>({});
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -61,32 +60,12 @@ export function Projects() {
     api.listAllVideos().then(setVideos).catch(() => setVideos([]));
   }, []);
 
-  useEffect(() => {
-    const completed = videos.filter((v) => v.stage === "completed" && !(v.id in thumbnails));
-    if (completed.length === 0) return;
-    let cancelled = false;
-    Promise.all(
-      completed.map(async (video) => {
-        try {
-          const assets = await api.listAssets(video.id);
-          const thumb = assets.find((a) => a.asset_type === "thumbnail");
-          return [video.id, thumb ? resolveStorageUrl(thumb.url) : null] as const;
-        } catch {
-          return [video.id, null] as const;
-        }
-      }),
-    ).then((results) => {
-      if (cancelled) return;
-      setThumbnails((prev) => {
-        const next = { ...prev };
-        for (const [id, url] of results) next[id] = url;
-        return next;
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Real thumbnails only (the first extracted-frame asset per video). They come
+  // with the video list itself, so this costs no extra requests.
+  const thumbnails = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    for (const v of videos ?? []) map[v.id] = resolveStorageUrl(v.thumbnail_url);
+    return map;
   }, [videos]);
 
   async function handleCreate(e: React.FormEvent) {

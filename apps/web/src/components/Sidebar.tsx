@@ -54,10 +54,15 @@ function QuickChannels() {
   const [channels, setChannels] = useState<ChannelConnectionStatus[] | null>(null);
 
   useEffect(() => {
-    api
-      .getConnectionsStatus()
-      .then((s) => setChannels(s.youtube_channels))
-      .catch(() => setChannels([]));
+    // Decoration, not essential: wait until the page's own data has had its
+    // turn instead of competing with it on a small server.
+    const timer = setTimeout(() => {
+      api
+        .getConnectionsStatus()
+        .then((s) => setChannels(s.youtube_channels))
+        .catch(() => setChannels([]));
+    }, 2000);
+    return () => clearTimeout(timer);
   }, []);
 
   if (!channels || channels.length === 0) return null;

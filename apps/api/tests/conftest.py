@@ -173,3 +173,14 @@ def client(db_session, monkeypatch):
     yield test_client
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _clear_connection_status_cache():
+    """The YouTube status check is cached per process (see routers/connections.py);
+    tests reuse the same fake credentials with different outcomes."""
+    from app.routers import connections
+
+    connections._STATUS_CACHE.clear()
+    yield
+    connections._STATUS_CACHE.clear()

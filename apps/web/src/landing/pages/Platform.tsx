@@ -1,20 +1,17 @@
 import { motion } from "framer-motion";
 import {
   Bot,
-  Clapperboard,
   FolderKanban,
-  ImagePlus,
   LayoutDashboard,
   Plus,
-  Scissors,
   Settings,
   Shield,
   Sparkles,
-  UploadCloud,
   Video,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { CommunityCta } from "../components/CommunityCta";
+import { StepIcon } from "../components/StepIcon";
 import { HERO_PHOTOS } from "../heroPhotos";
 
 const fadeUp = {
@@ -35,18 +32,18 @@ const SIDEBAR = [
 ] as const;
 
 const PLATFORM_FEATURES = [
-  { icon: Clapperboard, title: "AI Video Creation", body: "Turn your ideas into stunning videos with AI." },
-  { icon: Scissors, title: "Smart Clipping", body: "Find the best moments automatically." },
-  { icon: Bot, iconSrc: "/icons/ai-robot.png", title: "AI Assistant", body: "Get help, ideas and suggestions." },
-  { icon: ImagePlus, title: "Custom Thumbnails", body: "Create eye-catching thumbnails easily." },
-  { icon: UploadCloud, title: "Direct Publishing", body: "Upload to YouTube — more platforms on the way." },
+  { iconSrc: "/icons/video-creation.png", title: "AI Video Creation", body: "Turn your ideas into stunning videos with AI." },
+  { iconSrc: "/icons/smart-clipping.png", title: "Smart Clipping", body: "Find the best moments automatically." },
+  { iconSrc: "/icons/ai-robot.png", title: "AI Assistant", body: "Get help, ideas and suggestions." },
+  { iconSrc: "/icons/custom-thumbnails.png", title: "Custom Thumbnails", body: "Create eye-catching thumbnails easily." },
+  { iconSrc: "/icons/direct-publishing.png", title: "Direct Publishing", body: "Upload to YouTube — more platforms on the way." },
 ] as const;
 
 const STEPS = [
-  { step: 1, title: "Share Your Idea", body: "Tell us what you want to create." },
-  { step: 2, title: "Let AI Work", body: "We research, script and plan for you." },
-  { step: 3, title: "Review & Approve", body: "Check your content before production." },
-  { step: 4, title: "Download & Share", body: "Get your video and grow your audience." },
+  { step: 1, iconSrc: "/icons/idea-lightbulb.png", title: "Share Your Idea", body: "Tell us what you want to create." },
+  { step: 2, iconSrc: "/icons/ai-robot.png", title: "Let AI Work", body: "We research, script and plan for you." },
+  { step: 3, iconSrc: "/icons/create-review.png", title: "Review & Approve", body: "Check your content before production." },
+  { step: 4, iconSrc: "/icons/publish-rocket.png", title: "Download & Share", body: "Get your video and grow your audience." },
 ] as const;
 
 export function Platform() {
@@ -167,13 +164,15 @@ export function Platform() {
                 transition={{ duration: 0.4, delay: i * 0.05 }}
                 className="rounded-2xl border border-white/10 bg-panel p-5"
               >
-                {"iconSrc" in f ? (
-                  <img src={f.iconSrc} alt="" className="h-10 w-10 rounded-xl" />
-                ) : (
-                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-accent-600 to-accent-400">
-                    <f.icon size={18} className="text-white" />
-                  </span>
-                )}
+                <img
+                  src={f.iconSrc}
+                  alt=""
+                  width={56}
+                  height={56}
+                  loading="lazy"
+                  decoding="async"
+                  className="h-14 w-14 rounded-2xl"
+                />
                 <h3 className="mt-3 font-heading text-sm font-semibold text-white">{f.title}</h3>
                 <p className="mt-1.5 text-xs leading-relaxed text-white/55">{f.body}</p>
               </motion.div>
@@ -191,10 +190,8 @@ export function Platform() {
 
           <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {STEPS.map((s) => (
-              <div key={s.title} className="flex items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-accent-600 to-accent-400 text-xs font-bold text-white">
-                  {s.step}
-                </span>
+              <div key={s.title} className="flex items-start gap-4">
+                <StepIcon src={s.iconSrc} step={s.step} size={48} />
                 <div>
                   <h3 className="font-heading text-sm font-semibold text-white">{s.title}</h3>
                   <p className="mt-1 text-xs text-white/55">{s.body}</p>

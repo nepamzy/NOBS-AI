@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import { ApiError } from "../api/client";
+import { ApiError, warmApi } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { Logo } from "../components/Logo";
+import { useSlow } from "../hooks/useSlow";
 
 export function Login() {
   const { user, loading, login } = useAuth();
@@ -12,6 +13,12 @@ export function Login() {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const slowSignIn = useSlow(submitting, 4000);
+
+  // Start waking the API now, while the email and password are being typed.
+  useEffect(() => {
+    warmApi();
+  }, []);
 
   // Already signed in (e.g. tapped the logo again from the landing page):
   // no need to show the form.
@@ -82,7 +89,11 @@ export function Login() {
             disabled={submitting}
             className="mt-2 rounded-md bg-accent-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-600 disabled:opacity-40"
           >
-            {submitting ? "Logging in…" : "Log in"}
+            {submitting
+              ? slowSignIn
+                ? "Waking up the server… (up to a minute)"
+                : "Logging in…"
+              : "Log in"}
           </button>
         </form>
 

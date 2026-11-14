@@ -35,7 +35,6 @@ export function VideoLibrary() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [error, setError] = useState<string | null>(null);
   // video_id -> thumbnail URL, or null once we've confirmed there isn't one.
-  const [thumbnails, setThumbnails] = useState<Record<string, string | null>>({});
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
 
@@ -47,37 +46,12 @@ export function VideoLibrary() {
     api.listProjects().then(setProjects).catch(() => setProjects([]));
   }, []);
 
-  // Real thumbnails only — each is the actual extracted-frame asset the
-  // pipeline's THUMBNAIL stage produced, fetched from the same /assets
-  // endpoint the Production Control Room already uses. Only fetched for
-  // completed videos, since earlier stages have nothing to find yet.
-  useEffect(() => {
-    if (!videos) return;
-    const completed = videos.filter((v) => v.stage === "completed" && !(v.id in thumbnails));
-    if (completed.length === 0) return;
-    let cancelled = false;
-    Promise.all(
-      completed.map(async (video) => {
-        try {
-          const assets = await api.listAssets(video.id);
-          const thumb = assets.find((a) => a.asset_type === "thumbnail");
-          return [video.id, thumb ? resolveStorageUrl(thumb.url) : null] as const;
-        } catch {
-          return [video.id, null] as const;
-        }
-      }),
-    ).then((results) => {
-      if (cancelled) return;
-      setThumbnails((prev) => {
-        const next = { ...prev };
-        for (const [id, url] of results) next[id] = url;
-        return next;
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Real thumbnails only (the first extracted-frame asset per video). They come
+  // with the video list itself, so this costs no extra requests.
+  const thumbnails = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    for (const v of videos ?? []) map[v.id] = resolveStorageUrl(v.thumbnail_url);
+    return map;
   }, [videos]);
 
   const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);

@@ -7,41 +7,15 @@ import { useAuth } from "../auth/AuthContext";
 import { Panel, StatusPill, type Tone } from "../components/ui";
 import { isAwaitingApproval, isBlocked, videoStatus } from "../lib/videoStatus";
 
-/** Real thumbnails only, same /assets lookup Video Library uses — fetched
- * just for the handful of completed videos actually shown here. */
+/** Real thumbnails only: the first extracted-frame asset the pipeline made.
+ * They arrive with the video list itself (thumbnail_url), so showing them
+ * costs no extra requests. */
 function useThumbnails(videos: Video[] | null) {
-  const [thumbnails, setThumbnails] = useState<Record<string, string | null>>({});
-
-  useEffect(() => {
-    if (!videos) return;
-    const completed = videos.filter((v) => v.stage === "completed" && !(v.id in thumbnails));
-    if (completed.length === 0) return;
-    let cancelled = false;
-    Promise.all(
-      completed.map(async (video) => {
-        try {
-          const assets = await api.listAssets(video.id);
-          const thumb = assets.find((a) => a.asset_type === "thumbnail");
-          return [video.id, thumb ? resolveStorageUrl(thumb.url) : null] as const;
-        } catch {
-          return [video.id, null] as const;
-        }
-      }),
-    ).then((results) => {
-      if (cancelled) return;
-      setThumbnails((prev) => {
-        const next = { ...prev };
-        for (const [id, url] of results) next[id] = url;
-        return next;
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => {
+    const map: Record<string, string | null> = {};
+    for (const v of videos ?? []) map[v.id] = resolveStorageUrl(v.thumbnail_url);
+    return map;
   }, [videos]);
-
-  return thumbnails;
 }
 
 function Thumb({ url }: { url: string | null | undefined }) {

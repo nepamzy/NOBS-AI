@@ -1,9 +1,9 @@
 import { lazy, Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
+import { LoadingState } from "./components/LoadingState";
 import { RequireAdmin, RequireAuth } from "./auth/RequireAuth";
 import { AdminDashboard } from "./pages/AdminDashboard";
-import { Analytics } from "./pages/Analytics";
 import { Assistant } from "./pages/Assistant";
 import { ChannelConnections } from "./pages/ChannelConnections";
 import { Clips } from "./pages/Clips";
@@ -15,9 +15,14 @@ import { Projects } from "./pages/Projects";
 import { PublishingSchedules } from "./pages/PublishingSchedules";
 import { Settings } from "./pages/Settings";
 import { Signup } from "./pages/Signup";
-import { SpendDashboard } from "./pages/SpendDashboard";
 import { VideoDetail } from "./pages/VideoDetail";
 import { VideoLibrary } from "./pages/VideoLibrary";
+
+// Charts pull in a large library; only load it when one of these pages opens.
+const Analytics = lazy(() => import("./pages/Analytics").then((m) => ({ default: m.Analytics })));
+const SpendDashboard = lazy(() =>
+  import("./pages/SpendDashboard").then((m) => ({ default: m.SpendDashboard })),
+);
 
 // The public landing pages. Lazy so the admin app's bundle doesn't carry
 // the marketing site's animation library for every dashboard load.
@@ -40,12 +45,26 @@ export function App() {
           <Route path="projects/:projectId" element={<ProjectDetail />} />
           <Route path="library" element={<VideoLibrary />} />
           <Route path="videos/:videoId" element={<VideoDetail />} />
-          <Route path="analytics" element={<Analytics />} />
+          <Route
+            path="analytics"
+            element={
+              <Suspense fallback={<LoadingState />}>
+                <Analytics />
+              </Suspense>
+            }
+          />
           <Route path="publishing" element={<PublishingSchedules />} />
           <Route path="settings" element={<Settings />} />
           <Route element={<RequireAdmin />}>
             <Route path="admin" element={<AdminDashboard />} />
-            <Route path="spend" element={<SpendDashboard />} />
+            <Route
+              path="spend"
+              element={
+                <Suspense fallback={<LoadingState />}>
+                  <SpendDashboard />
+                </Suspense>
+              }
+            />
             <Route path="connections" element={<ChannelConnections />} />
           </Route>
         </Route>

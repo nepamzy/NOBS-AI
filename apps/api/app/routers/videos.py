@@ -11,7 +11,7 @@ from app.engines import get_script_engine
 from app.jobs.queue import enqueue_pipeline_start
 from app.models.asset import Asset
 from app.models.compliance import ComplianceReport
-from app.models.enums import JobStatus, PipelineStage, UserRole
+from app.models.enums import AssetType, JobStatus, PipelineStage, UserRole
 from app.models.project import Project
 from app.models.script import Scene, Script
 from app.models.user import User
@@ -124,7 +124,30 @@ def list_videos(
     )
     if project_id is not None:
         query = query.filter(Video.project_id == project_id)
-    return query.order_by(Video.created_at.desc()).all()
+    videos = query.order_by(Video.created_at.desc()).all()
+    _attach_thumbnail_paths(db, videos)
+    return videos
+
+
+def _attach_thumbnail_paths(db: Session, videos: list[Video]) -> None:
+    """First thumbnail asset per video (the same one the frontend used to find
+    with a /videos/{id}/assets request per video), fetched in a single query."""
+    if not videos:
+        return
+    rows = (
+        db.query(Asset.video_id, Asset.path)
+        .filter(
+            Asset.video_id.in_([v.id for v in videos]),
+            Asset.asset_type == AssetType.THUMBNAIL,
+        )
+        .order_by(Asset.created_at)
+        .all()
+    )
+    first_by_video: dict[uuid.UUID, str] = {}
+    for video_id, path in rows:
+        first_by_video.setdefault(video_id, path)
+    for video in videos:
+        video.thumbnail_path = first_by_video.get(video.id)  # transient, not a column
 
 
 @router.get("/{video_id}", response_model=VideoRead)

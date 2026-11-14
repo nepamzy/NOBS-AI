@@ -1,9 +1,10 @@
 import { motion } from "framer-motion";
-import { Bot, CheckCircle2, Lightbulb, Rocket, Wand2 } from "lucide-react";
+import { Wand2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { CommunityCta } from "../components/CommunityCta";
 import { GoalStats } from "../components/GoalStats";
 import { HeroVisual } from "../components/HeroVisual";
+import { StepIcon } from "../components/StepIcon";
 import { WaitlistInlineForm } from "../components/WaitlistInlineForm";
 import { HERO_PHOTOS } from "../heroPhotos";
 
@@ -13,10 +14,10 @@ const fadeUp = {
 };
 
 const STEPS = [
-  { icon: Lightbulb, step: 1, title: "Share Your Idea", body: "Tell us what you want to create." },
-  { icon: Bot, step: 2, title: "Let AI Work", body: "We research, script and plan for you." },
-  { icon: CheckCircle2, step: 3, title: "Review & Approve", body: "Check your content before production." },
-  { icon: Rocket, step: 4, title: "Download & Share", body: "Get your amazing video and grow your audience." },
+  { iconSrc: "/icons/idea-lightbulb.png", step: 1, title: "Share Your Idea", body: "Tell us what you want to create." },
+  { iconSrc: "/icons/ai-robot.png", step: 2, title: "Let AI Work", body: "We research, script and plan for you." },
+  { iconSrc: "/icons/create-review.png", step: 3, title: "Review & Approve", body: "Check your content before production." },
+  { iconSrc: "/icons/publish-rocket.png", step: 4, title: "Download & Share", body: "Get your amazing video and grow your audience." },
 ] as const;
 
 export function Home() {
@@ -127,13 +128,8 @@ export function Home() {
                 transition={{ duration: 0.5, delay: i * 0.08 }}
                 className="rounded-2xl border border-white/10 bg-panel p-6"
               >
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-accent-600 to-accent-400 text-sm font-bold text-white">
-                  {s.step}
-                </span>
-                <h3 className="mt-4 flex items-center gap-2 font-heading text-base font-semibold text-white">
-                  <s.icon size={16} className="text-gold-400" />
-                  {s.title}
-                </h3>
+                <StepIcon src={s.iconSrc} step={s.step} size={56} />
+                <h3 className="mt-5 font-heading text-base font-semibold text-white">{s.title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-white/55">{s.body}</p>
               </motion.div>
             ))}

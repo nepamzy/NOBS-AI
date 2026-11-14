@@ -36,6 +36,7 @@ export interface Video {
   storyboard_approved: boolean;
   final_video_path: string | null;
   final_video_url: string | null;
+  thumbnail_url: string | null;
   auto_publish: boolean;
   youtube_video_id: string | null;
   youtube_published: boolean;

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
+import { warmApi } from "../../api/client";
 import { Footer } from "./Footer";
 import { NavBar } from "./NavBar";
 
@@ -27,6 +28,11 @@ function ScrollManager() {
 }
 
 export function LandingLayout() {
+  // Wake the API in the background so the admin login is fast after a quiet spell.
+  useEffect(() => {
+    warmApi();
+  }, []);
+
   return (
     <div className="landing-root flex min-h-screen flex-col overflow-x-clip">
       <ScrollManager />

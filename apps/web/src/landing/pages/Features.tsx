@@ -1,14 +1,8 @@
 import { motion } from "framer-motion";
 import {
-  BarChart3,
-  Bot,
-  Clapperboard,
   Heart,
-  ImagePlus,
-  Scissors,
   Star,
   TrendingUp,
-  UploadCloud,
   Zap,
 } from "lucide-react";
 import { CommunityCta } from "../components/CommunityCta";
@@ -26,35 +20,34 @@ const fadeUp = {
 // the "Overstated features" decision in chat.
 const FEATURES = [
   {
-    icon: Clapperboard,
+    iconSrc: "/icons/video-creation.png",
     title: "AI Video Creation",
     body: "Turn your ideas into stunning videos with AI.",
     id: "creators",
   },
   {
-    icon: Scissors,
+    iconSrc: "/icons/smart-clipping.png",
     title: "Smart Clipping",
     body: "Find the best moments in a long video automatically.",
   },
   {
-    icon: Bot,
     iconSrc: "/icons/ai-robot.png",
     title: "AI Assistant",
     body: "Get help, ideas and suggestions while you create.",
   },
   {
-    icon: ImagePlus,
+    iconSrc: "/icons/custom-thumbnails.png",
     title: "Custom Thumbnails",
     body: "Create eye-catching thumbnails easily.",
   },
   {
-    icon: UploadCloud,
+    iconSrc: "/icons/direct-publishing.png",
     title: "Direct Publishing",
     body: "Upload straight to YouTube — more platforms on the way.",
     id: "businesses",
   },
   {
-    icon: BarChart3,
+    iconSrc: "/icons/analytics.png",
     title: "Analytics",
     body: "Track performance and grow faster.",
     comingSoon: true,
@@ -119,13 +112,15 @@ export function Features() {
               className="scroll-mt-24 rounded-2xl border border-white/10 bg-panel p-6"
             >
               <div className="flex items-center justify-between">
-                {"iconSrc" in f ? (
-                  <img src={f.iconSrc} alt="" className="h-11 w-11 rounded-xl" />
-                ) : (
-                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-accent-600 to-accent-400">
-                    <f.icon size={20} className="text-white" />
-                  </span>
-                )}
+                <img
+                  src={f.iconSrc}
+                  alt=""
+                  width={64}
+                  height={64}
+                  loading="lazy"
+                  decoding="async"
+                  className="h-16 w-16 rounded-2xl"
+                />
                 {"comingSoon" in f && f.comingSoon && (
                   <span className="rounded-full bg-gold-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-gold-400">
                     Coming Soon

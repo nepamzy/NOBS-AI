@@ -57,6 +57,7 @@ export function getStoredToken(): string | null {
 }
 
 export function storeToken(token: string): void {
+  listCache.clear();
   try {
     localStorage.setItem(TOKEN_STORAGE_KEY, token);
   } catch {
@@ -65,6 +66,7 @@ export function storeToken(token: string): void {
 }
 
 export function clearStoredToken(): void {
+  listCache.clear();
   try {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
   } catch {
@@ -91,8 +93,59 @@ export function errorMessage(err: unknown): string {
   return String(err);
 }
 
+// Several components ask for the same list at the same moment (the top bar's
+// search, its notification bell and the page itself all want /videos). Share
+// one request between them: while it is in flight, and for a moment after it
+// finishes. Any write clears the cache, so a list never lags behind a change.
+const LIST_CACHE_AFTER_MS = 1500;
+const listCache = new Map<string, { promise: Promise<unknown>; settledAt: number | null }>();
+
+function cachedList<T>(path: string): Promise<T> {
+  const hit = listCache.get(path);
+  if (hit && (hit.settledAt === null || Date.now() - hit.settledAt < LIST_CACHE_AFTER_MS)) {
+    return (hit.promise as Promise<T>).then(copyList);
+  }
+  const entry: { promise: Promise<unknown>; settledAt: number | null } = {
+    promise: request<T>(path),
+    settledAt: null,
+  };
+  listCache.set(path, entry);
+  entry.promise
+    .then(() => {
+      entry.settledAt = Date.now();
+    })
+    .catch(() => {
+      if (listCache.get(path) === entry) listCache.delete(path); // never cache a failure
+    });
+  return (entry.promise as Promise<T>).then(copyList);
+}
+
+// Each caller gets its own array, so one component sorting or editing its
+// copy can't change what another component sees.
+function copyList<T>(value: T): T {
+  return (Array.isArray(value) ? [...value] : value) as T;
+}
+
+/** Fire-and-forget request that wakes the API if it is asleep (the free
+ * hosting plan stops it after 15 minutes of silence, and the first request
+ * after that takes up to a minute). Called from the public pages and the
+ * login screen so it is awake by the time anyone signs in. Never throws. */
+const WARM_STORAGE_KEY = "nobs_ai_warmed_at";
+export function warmApi(): void {
+  try {
+    const last = Number(sessionStorage.getItem(WARM_STORAGE_KEY) ?? 0);
+    if (Date.now() - last < 5 * 60 * 1000) return;
+    sessionStorage.setItem(WARM_STORAGE_KEY, String(Date.now()));
+  } catch {
+    // storage unavailable (private mode etc.) — just ping
+  }
+  fetch(`${BASE_URL}/health`, { mode: "no-cors", cache: "no-store", keepalive: true }).catch(() => {});
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getStoredToken();
+  const isWrite = !!options.method && options.method.toUpperCase() !== "GET";
+  if (isWrite) listCache.clear();
   const response = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
@@ -101,6 +154,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       ...options.headers,
     },
   });
+  if (isWrite) listCache.clear();
 
   if (!response.ok) {
     let detail = response.statusText;
@@ -122,6 +176,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 // FormData instance. Setting it manually breaks the upload silently.
 async function upload<T>(path: string, formData: FormData): Promise<T> {
   const token = getStoredToken();
+  listCache.clear();
   const response = await fetch(`${BASE_URL}${path}`, {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -142,14 +197,14 @@ async function upload<T>(path: string, formData: FormData): Promise<T> {
 }
 
 export const api = {
-  listProjects: () => request<Project[]>("/projects"),
+  listProjects: () => cachedList<Project[]>("/projects"),
   createProject: (name: string) =>
     request<Project>("/projects", { method: "POST", body: JSON.stringify({ name }) }),
   getProject: (id: string) => request<Project>(`/projects/${id}`),
 
   listVideos: (projectId: string) =>
     request<Video[]>(`/videos?project_id=${encodeURIComponent(projectId)}`),
-  listAllVideos: () => request<Video[]>("/videos"),
+  listAllVideos: () => cachedList<Video[]>("/videos"),
   createVideo: (payload: {
     project_id: string;
     topic: string;
@@ -303,7 +358,7 @@ export const api = {
     formData.append("file", file);
     return upload<SourceVideo>("/source-videos", formData);
   },
-  listSourceVideos: () => request<SourceVideo[]>("/source-videos"),
+  listSourceVideos: () => cachedList<SourceVideo[]>("/source-videos"),
   getSourceVideo: (id: string) => request<SourceVideo>(`/source-videos/${id}`),
   updateSourceVideo: (id: string, payload: { auto_publish?: boolean }) =>
     request<SourceVideo>(`/source-videos/${id}`, {

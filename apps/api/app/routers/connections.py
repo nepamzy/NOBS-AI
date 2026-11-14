@@ -7,8 +7,11 @@ EngineNotConfiguredError). The Channel Connections, Settings, and Spending
 screens need to show configuration state without first attempting
 anything — see NOBS AI Frontend Blueprint sections 11/13/10."""
 
+import time
+
 import httpx
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 
 from app.auth.deps import require_admin
 from app.config import settings
@@ -16,7 +19,6 @@ from app.models.user import User
 from app.schemas.connections import ChannelConnectionStatus, ConnectionsStatusRead, ProviderStatus
 from services.common.errors import EngineNotConfiguredError
 from services.connectors.youtube.adapter import YouTubeConnector
-from pydantic import BaseModel
 
 router = APIRouter(prefix="/connections", tags=["connections"])
 
@@ -107,7 +109,34 @@ def _gmail_status() -> ProviderStatus:
     )
 
 
+# The sidebar asks for this on every app load, and a real check means a Google
+# token refresh plus a YouTube API call per channel — slow, and heavy on a
+# small server. The answer rarely changes, so keep it for a few minutes (a
+# failure for less, so a fix shows up quickly). It's per process: restarting
+# the API (e.g. after changing the credentials) always starts fresh.
+_STATUS_CACHE: dict[tuple[str, str, str, str], tuple[float, ChannelConnectionStatus]] = {}
+_STATUS_TTL_CONNECTED_SECONDS = 600
+_STATUS_TTL_FAILED_SECONDS = 60
+
+
 def _youtube_channel_status(
+    channel_id: str, name: str, client_id: str, client_secret: str, refresh_token: str
+) -> ChannelConnectionStatus:
+    key = (channel_id, client_id, client_secret, refresh_token)
+    cached = _STATUS_CACHE.get(key)
+    if cached is not None and cached[0] > time.monotonic():
+        return cached[1]
+
+    status = _fetch_youtube_channel_status(
+        channel_id, name, client_id, client_secret, refresh_token
+    )
+    if status.configured:  # an unconfigured channel costs nothing to recompute
+        ttl = _STATUS_TTL_CONNECTED_SECONDS if status.connected else _STATUS_TTL_FAILED_SECONDS
+        _STATUS_CACHE[key] = (time.monotonic() + ttl, status)
+    return status
+
+
+def _fetch_youtube_channel_status(
     channel_id: str, name: str, client_id: str, client_secret: str, refresh_token: str
 ) -> ChannelConnectionStatus:
     missing = _missing(

@@ -2,16 +2,13 @@ import { motion } from "framer-motion";
 import {
   ArrowRight,
   CheckCircle2,
-  Clapperboard,
-  Lightbulb,
-  Rocket,
-  Wand2,
   Zap,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { CommunityCta } from "../components/CommunityCta";
 import { GoalStats } from "../components/GoalStats";
 import { HeroVisual } from "../components/HeroVisual";
+import { StepIcon } from "../components/StepIcon";
 import { WhyChoose } from "../components/WhyChoose";
 import { HERO_PHOTOS } from "../heroPhotos";
 
@@ -24,7 +21,6 @@ const STEPS = [
   {
     step: 1,
     iconSrc: "/icons/idea-lightbulb.png",
-    fallbackIcon: Lightbulb,
     title: "Share Your Idea",
     body: "Tell us what you want to create.",
     tags: ["YouTube Video", "Faceless Channel"] as readonly string[] | undefined,
@@ -33,7 +29,6 @@ const STEPS = [
   {
     step: 2,
     iconSrc: "/icons/ai-robot.png",
-    fallbackIcon: Wand2,
     title: "Let AI Work",
     body: "Our AI researches, writes scripts and plans your content.",
     tags: undefined as readonly string[] | undefined,
@@ -41,12 +36,7 @@ const STEPS = [
   },
   {
     step: 3,
-    // Pending: blocked on the ElevenLabs/Canva free daily image-gen quota
-    // (see chat) — a real "video + checkmark" icon swaps in here once one
-    // of those resets or a paid tier is approved, same src-only change as
-    // the other three.
-    iconSrc: undefined as string | undefined,
-    fallbackIcon: Clapperboard,
+    iconSrc: "/icons/create-review.png",
     title: "Create & Review",
     body: "Get high-quality videos with scenes, voice and more.",
     tags: undefined as readonly string[] | undefined,
@@ -55,7 +45,6 @@ const STEPS = [
   {
     step: 4,
     iconSrc: "/icons/publish-rocket.png",
-    fallbackIcon: Rocket,
     title: "Publish & Grow",
     body: "Download your video and share it to reach more people.",
     tags: undefined as readonly string[] | undefined,
@@ -117,18 +106,7 @@ export function HowItWorks() {
               transition={{ duration: 0.4, delay: i * 0.08 }}
               className="relative rounded-2xl border border-white/10 bg-panel p-6"
             >
-              <div className="relative inline-block">
-                {s.iconSrc ? (
-                  <img src={s.iconSrc} alt="" className="h-16 w-16 rounded-2xl" />
-                ) : (
-                  <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-accent-600 to-accent-400">
-                    <s.fallbackIcon size={28} className="text-white" />
-                  </span>
-                )}
-                <span className="absolute -bottom-2 -left-2 flex h-7 w-7 items-center justify-center rounded-full border-2 border-panel bg-gradient-to-br from-accent-600 to-accent-400 text-[11px] font-bold text-white">
-                  {s.step}
-                </span>
-              </div>
+              <StepIcon src={s.iconSrc} step={s.step} size={64} />
               <h3 className="mt-5 font-heading text-base font-semibold text-white">{s.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-white/55">{s.body}</p>
 

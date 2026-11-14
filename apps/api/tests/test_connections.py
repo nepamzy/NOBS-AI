@@ -140,3 +140,64 @@ def test_youtube_channel_configured_but_token_revoked(client, monkeypatch):
     assert main["configured"] is True
     assert main["connected"] is False
     assert main["error"]
+
+
+def test_youtube_status_is_cached_so_repeat_loads_do_not_call_google(client, monkeypatch):
+    from app.config import settings
+    from app.routers import connections as connections_router
+
+    monkeypatch.setattr(settings, "google_youtube_client_id", "id")
+    monkeypatch.setattr(settings, "google_youtube_client_secret", "secret")
+    monkeypatch.setattr(settings, "google_youtube_refresh_token", "refresh")
+
+    calls = []
+
+    def fake_identity(self):
+        calls.append(1)
+        return ChannelIdentity(channel_id="UC123", title="Nobs Main Channel", thumbnail_url=None)
+
+    monkeypatch.setattr(connections_router.YouTubeConnector, "get_channel_identity", fake_identity)
+
+    for _ in range(3):
+        response = client.get("/connections/status")
+        main = next(c for c in response.json()["youtube_channels"] if c["id"] == "youtube_main")
+        assert main["connected"] is True
+
+    assert len(calls) == 1  # one live check, then served from the cache
+
+
+def test_youtube_status_cache_expires(client, monkeypatch):
+    from app.config import settings
+    from app.routers import connections as connections_router
+
+    monkeypatch.setattr(settings, "google_youtube_client_id", "id")
+    monkeypatch.setattr(settings, "google_youtube_client_secret", "secret")
+    monkeypatch.setattr(settings, "google_youtube_refresh_token", "refresh")
+
+    calls = []
+
+    def fake_identity(self):
+        calls.append(1)
+        return ChannelIdentity(channel_id="UC123", title="Nobs Main Channel", thumbnail_url=None)
+
+    monkeypatch.setattr(connections_router.YouTubeConnector, "get_channel_identity", fake_identity)
+
+    client.get("/connections/status")
+    # Age every cached entry past its expiry.
+    for key, (_expires, status) in list(connections_router._STATUS_CACHE.items()):
+        connections_router._STATUS_CACHE[key] = (0.0, status)
+    client.get("/connections/status")
+
+    assert len(calls) == 2
+
+
+def test_unconfigured_youtube_channels_are_not_cached(client, monkeypatch):
+    from app.config import settings
+    from app.routers import connections as connections_router
+
+    monkeypatch.setattr(settings, "google_youtube_client_id", "")
+    monkeypatch.setattr(settings, "google_youtube_client_secret", "")
+    monkeypatch.setattr(settings, "google_youtube_refresh_token", "")
+
+    client.get("/connections/status")
+    assert connections_router._STATUS_CACHE == {}
