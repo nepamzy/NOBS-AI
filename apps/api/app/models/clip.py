@@ -34,6 +34,9 @@ class Clip(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # Null on clips uploaded before this existed — those always went to the
     # second ("clips") channel.
     youtube_channel: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # "short" (vertical, up to 3 min) or "long" (horizontal normal video); only
+    # set for clips Claude hands over. Null on clips NOBS AI cut itself.
+    format: Mapped[str | None] = mapped_column(String(10), nullable=True)
     youtube_published: Mapped[bool] = mapped_column(Boolean, default=False)
 
     source_video: Mapped["SourceVideo"] = relationship(back_populates="clips")

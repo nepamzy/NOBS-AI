@@ -342,6 +342,12 @@ function SourceVideoCard({
   );
 }
 
+function formatLabel(clip: Clip): string {
+  if (clip.format === "short") return "Short (vertical)";
+  if (clip.format === "long") return "Long video";
+  return "";
+}
+
 function channelSuffix(clip: Clip): string {
   if (clip.youtube_channel === "main") return " · main channel";
   if (clip.youtube_channel === "clips" || clip.youtube_video_id) return " · second channel";
@@ -371,7 +377,8 @@ function ClipRow({ clip, onPublished }: { clip: Clip; onPublished: () => void })
         <div className="min-w-0">
           <p className="text-white">{clip.title}</p>
           <p className="mt-0.5 text-xs text-white/50">
-            {formatTime(clip.start_seconds)}–{formatTime(clip.end_seconds)} · {clip.reason}
+            {formatTime(clip.start_seconds)}–{formatTime(clip.end_seconds)}
+            {formatLabel(clip) && ` · ${formatLabel(clip)}`} · {clip.reason}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">

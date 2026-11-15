@@ -98,10 +98,27 @@ https link) or the `clip_command` from `nobs_upload_instructions` (direct upload
 NOBS AI files each clip on the **Smart Clipping** page, grouped by the long video's
 title, and **uploads it to YouTube as private**.
 
-- **Which channel:** by default the **main channel** (the one your videos use), or the
-  **second (clips) channel** if the main one isn't connected. Claude can say
-  `channel: "main"` or `"clips"` explicitly; an explicit channel that isn't connected is
-  refused, never silently swapped. A clip stays on the channel it was uploaded to.
+- **Format (you tell Claude, every time):** each clip is either a **Short** — vertical
+  9:16, up to **3 minutes** — or a **long video** — horizontal, any length that fits the
+  size limit. Claude must be told which; if you haven't said, it asks. NOBS AI checks the
+  file's real shape and length and rejects a wrong one with a fix hint (e.g. the ffmpeg
+  crop-to-9:16 command), because YouTube decides Short vs. normal video from the picture,
+  not from a label. Shorts get `#Shorts` added to the description.
+- **Which channel:**
+  - **Clips channel = vertical Shorts only.** Tell Claude "clips channel"; a long video
+    is refused there.
+  - **Main channel = Short or long.** Tell Claude "main channel, short" or "main channel,
+    long".
+  - If you give no channel: a Short goes to the main channel if connected, else the clips
+    channel; a long video goes to the main channel only. An explicit channel that isn't
+    connected is refused, never swapped. A clip stays on the channel it was uploaded to.
+- **Length (you tell Claude):** e.g. "2-minute", "3-minute" or "5-minute" clips. Shorts
+  stop at 3 minutes (checked against several sources, not YouTube's own page), so a
+  **5-minute clip can only be a long video** on the main channel.
+- **Size limit:** 50 MB per file (Supabase's free tier). A 5-minute horizontal clip at
+  normal quality is bigger than that, so Claude is told to encode small (720p, crf ~28).
+  If a long clip still doesn't fit, raising `CONNECTOR_MAX_IMPORT_MB` needs a paid
+  Supabase plan — your call.
 - **Public only when you say so:** `publish=true` on the submit, or `nobs_publish_clip`
   (needs `confirm=true`), and only when you told Claude to publish clips. Otherwise
   publish from the Smart Clipping page.

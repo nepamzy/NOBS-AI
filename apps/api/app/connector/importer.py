@@ -168,14 +168,35 @@ def fetch_optional(url: str, kind: tuple[set[str], str, int], work_dir: Path, st
 # --------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class VideoInfo:
+    duration: float
+    width: int  # as displayed (after any rotation metadata)
+    height: int
+
+    @property
+    def vertical(self) -> bool:
+        return self.height > self.width
+
+    @property
+    def horizontal(self) -> bool:
+        return self.width > self.height
+
+
 def probe_video(path: Path) -> float:
-    """Returns the duration in seconds, or raises if this isn't a playable
-    video. Trusting the file extension alone would let anything through."""
+    return probe_video_info(path).duration
+
+
+def probe_video_info(path: Path) -> VideoInfo:
+    """Duration and displayed size, or raises if this isn't a playable video.
+    Trusting the file extension alone would let anything through."""
     try:
         result = subprocess.run(
             [
                 "ffprobe", "-v", "error",
-                "-show_entries", "format=duration,format_name:stream=codec_type",
+                "-show_entries",
+                "format=duration,format_name:stream=codec_type,width,height"
+                ":stream_tags=rotate:stream_side_data=rotation",
                 "-of", "json", str(path),
             ],
             capture_output=True,
@@ -188,7 +209,8 @@ def probe_video(path: Path) -> float:
         raise ConnectorImportError("That file isn't a readable video.")
     try:
         info = json.loads(result.stdout)
-        has_video = any(s.get("codec_type") == "video" for s in info.get("streams", []))
+        video_streams = [s for s in info.get("streams", []) if s.get("codec_type") == "video"]
+        has_video = bool(video_streams)
         duration = float(info["format"]["duration"])
         format_name = str(info["format"].get("format_name", ""))
     except (ValueError, KeyError, TypeError) as exc:
@@ -198,7 +220,14 @@ def probe_video(path: Path) -> float:
     # Stored and served as final.mp4, so anything else (webm, mkv...) might not play.
     if "mp4" not in format_name.split(","):
         raise ConnectorImportError("Only MP4 videos are supported — convert it to MP4 first.")
-    return duration
+    stream = video_streams[0]
+    width, height = int(stream.get("width") or 0), int(stream.get("height") or 0)
+    rotation = stream.get("tags", {}).get("rotate")
+    for side in stream.get("side_data_list", []):
+        rotation = side.get("rotation", rotation)
+    if rotation is not None and abs(int(float(rotation))) % 180 == 90:
+        width, height = height, width  # phone clips are often stored sideways + rotated
+    return VideoInfo(duration=duration, width=width, height=height)
 
 
 # --------------------------------------------------------------------------

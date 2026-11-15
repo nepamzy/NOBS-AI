@@ -41,6 +41,33 @@ class ClipRequest:
     end_seconds: float | None = None
     channel: str = "auto"
     publish: bool = False
+    # "short" (vertical, up to 3 min) or "long" (horizontal). REQUIRED: the
+    # caller must have been told which by Nobert, never guess.
+    format: str = ""
+
+
+def _check_shape(info: importer.VideoInfo, fmt: str) -> None:
+    """The file must really be what was declared — YouTube decides Short vs
+    normal video from the picture, not from anything we say."""
+    seconds = round(info.duration)
+    if fmt == "short":
+        if not info.vertical:
+            raise ConnectorImportError(
+                f"A short must be VERTICAL (taller than wide); this file is {info.width}x"
+                f"{info.height}. Re-cut it to 9:16, e.g. ffmpeg -i in.mp4 -vf "
+                '"crop=ih*9/16:ih,scale=1080:1920" out.mp4 (or 720x1280 to stay small).'
+            )
+        if info.duration > publishing.SHORT_MAX_SECONDS:
+            raise ConnectorImportError(
+                f"A short can be at most {publishing.SHORT_MAX_SECONDS} seconds (3 minutes); "
+                f"this clip is {seconds}s. Cut it shorter, or send it as format 'long' to the "
+                "main channel."
+            )
+    elif not info.horizontal:
+        raise ConnectorImportError(
+            f"A long video must be HORIZONTAL (wider than tall); this file is {info.width}x"
+            f"{info.height}. For a vertical clip use format 'short'."
+        )
 
 
 def _find_or_create_source(db: Session, user: User, title: str) -> SourceVideo:
@@ -78,7 +105,19 @@ def store_clip(
     """Validates and stores the clip file and records it. Does not touch YouTube."""
     if not request.title.strip():
         raise ConnectorImportError("A title is required.")
-    duration = importer.probe_video(request.video_path)
+    if request.format not in publishing.FORMATS:
+        raise ConnectorImportError(
+            "Say whether this clip is a 'short' (vertical, up to 3 minutes) or a 'long' video "
+            "(horizontal). Ask Nobert if he hasn't told you."
+        )
+    try:
+        publishing.check_format_channel(request.format, request.channel)
+    except publishing.PublishingError as exc:
+        raise ConnectorImportError(str(exc)) from exc
+
+    info = importer.probe_video_info(request.video_path)
+    duration = info.duration
+    _check_shape(info, request.format)
 
     start = request.start_seconds if request.start_seconds is not None else 0.0
     end = request.end_seconds if request.end_seconds is not None else start + duration
@@ -93,6 +132,7 @@ def store_clip(
             end_seconds=end,
             title=request.title.strip()[:200],
             reason=request.description.strip(),
+            format=request.format,
         )
         db.add(clip)
         db.flush()
@@ -126,6 +166,7 @@ def clip_summary(clip: Clip, youtube_error: str | None = None) -> dict:
     return {
         "clip_id": str(clip.id),
         "title": clip.title,
+        "format": clip.format,
         "source": clip.source_video.original_filename if clip.source_video else None,
         "clip_url": to_url(clip.clip_path),
         "youtube": {

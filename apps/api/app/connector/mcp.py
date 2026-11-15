@@ -54,8 +54,13 @@ _INSTRUCTIONS = (
     "nobs_get_claude_job for the script, scenes, voice and style, make the voiceover and "
     "footage, then nobs_complete_claude_job with the finished MP4.\n"
     "3) Clips you cut yourself: nobs_submit_clip (one call per finished clip). NOBS AI files it "
-    "and uploads it to YouTube as PRIVATE — by default to the main channel, or the second "
-    "channel if the main one isn't connected.\n"
+    "and uploads it to YouTube as PRIVATE. Every clip needs a format that Nobert has told you: "
+    "'short' = VERTICAL 9:16, max 3 minutes (a Short); 'long' = HORIZONTAL, any length that fits "
+    f"{settings.connector_max_import_mb} MB (a normal video). The CLIPS channel takes vertical "
+    "Shorts only; the MAIN channel takes either, so ask Nobert 'Short or long?' if he hasn't "
+    "said. He also sets how long each clip is (e.g. 2, 3 or 5 minutes): a 5-minute clip can only "
+    "be a 'long' video, since Shorts stop at 3 minutes. Encode small (720p, crf ~28) to fit the "
+    "size limit. The file's real shape is checked and wrong ones are rejected.\n"
     "If a file only exists in your sandbox, call nobs_upload_instructions.\n"
     "PUBLISHING: you may call nobs_schedule_publish or nobs_publish_video ONLY when Nobert has "
     "explicitly told you, in this conversation, to publish or schedule that specific video "
@@ -187,9 +192,10 @@ def _tool_upload_instructions(ctx: RpcContext, args: dict) -> dict:
             "clip_command": (
                 f'curl -sS -X POST "{base}/connector/upload-clip/{ctx.key}" '
                 '-F "file=@/path/to/clip.mp4" -F "title=Clip title" '
-                '-F "source_title=Title of the long video"'
+                '-F "source_title=Title of the long video" -F "format=short"'
             ),
             "clip_form_fields": [
+                "format (REQUIRED: short = vertical 9:16 up to 3 min | long = horizontal)",
                 "description", "start_seconds", "end_seconds",
                 "channel (auto|main|clips)", "publish (true only if Nobert said so)",
             ],
@@ -402,6 +408,7 @@ def _tool_submit_clip(ctx: RpcContext, args: dict) -> dict:
             end_seconds=end,
             channel=str(args.get("channel") or "auto"),
             publish=args.get("publish") is True,
+            format=str(args.get("format") or ""),
         )
         clip = clip_tools.store_clip(ctx.db, ctx.user, request, _storage())
 
@@ -585,13 +592,20 @@ TOOLS: dict[str, dict] = {
     },
     "nobs_submit_clip": {
         "description": "Hand over a clip YOU cut: NOBS AI stores it on the Clips page and "
-        "uploads it to YouTube as PRIVATE. channel: 'auto' (default: the main channel, or the "
-        "second one if the main isn't connected), 'main' or 'clips'. publish=true makes it "
-        "public — ONLY when Nobert explicitly told you to publish clips.",
+        "uploads it to YouTube as PRIVATE. format (REQUIRED, from Nobert): 'short' = vertical "
+        "9:16 up to 3 min; 'long' = horizontal normal video. channel: 'clips' (vertical "
+        "Shorts only), 'main', or 'auto' (main if connected, else clips; long always main). "
+        "publish=true makes it public — ONLY when Nobert explicitly told you to publish clips.",
         "inputSchema": {
             "type": "object",
-            "required": ["title", "video_url"],
+            "required": ["title", "video_url", "format"],
             "properties": {
+                "format": {
+                    "type": "string",
+                    "enum": ["short", "long"],
+                    "description": "short = vertical 9:16, max 3 min. long = horizontal. "
+                    "Use what Nobert told you; if he didn't say, ask.",
+                },
                 "title": {**_STR, "description": "Clip title (also the YouTube title)."},
                 "video_url": {**_STR, "description": "Direct public https link to the MP4."},
                 "description": {**_STR, "description": "YouTube description / why this moment."},

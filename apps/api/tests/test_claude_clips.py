@@ -14,7 +14,9 @@ from app.connector import importer
 from app.models.clip import Clip
 from app.models.source_video import SourceVideo
 
-URL = "https://f.test/clip.mp4"
+URL = "https://f.test/clip.mp4"  # horizontal 160x120
+VURL = "https://f.test/vertical.mp4"  # vertical 108x192
+LONGV = "https://f.test/long-vertical.mp4"  # vertical, 181 s
 
 
 @pytest.fixture(scope="session")
@@ -28,11 +30,35 @@ def clip_mp4(tmp_path_factory) -> bytes:
     return path.read_bytes()
 
 
+def _make(tmp_path_factory, name, source) -> bytes:
+    path = tmp_path_factory.mktemp(name) / "v.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-f", "lavfi", "-i", source, "-pix_fmt", "yuv420p", str(path)],
+        check=True, capture_output=True,
+    )
+    return path.read_bytes()
+
+
+@pytest.fixture(scope="session")
+def vertical_mp4(tmp_path_factory) -> bytes:
+    return _make(tmp_path_factory, "vert", "testsrc=duration=2:size=108x192:rate=10")
+
+
+@pytest.fixture(scope="session")
+def long_vertical_mp4(tmp_path_factory) -> bytes:
+    # 181 s: one second over the Shorts limit
+    return _make(tmp_path_factory, "vlong", "color=c=black:s=36x64:r=1:d=181")
+
+
 @pytest.fixture
-def env(tmp_path, monkeypatch, clip_mp4):
+def env(tmp_path, monkeypatch, clip_mp4, vertical_mp4, long_vertical_mp4):
     monkeypatch.setattr(settings, "local_storage_root", str(tmp_path / "store"))
     monkeypatch.setattr(settings, "storage_backend", "local")
-    table = {URL: httpx.Response(200, content=clip_mp4)}
+    table = {
+        URL: httpx.Response(200, content=clip_mp4),
+        VURL: httpx.Response(200, content=vertical_mp4),
+        LONGV: httpx.Response(200, content=long_vertical_mp4),
+    }
     monkeypatch.setattr(
         importer, "_http_client",
         lambda: httpx.Client(
@@ -89,8 +115,9 @@ def _call(client, key, name, arguments):
 
 
 def _submit(client, key, **extra):
-    return _call(client, key, "nobs_submit_clip",
-                 {"title": "Best moment", "video_url": URL, "source_title": "Long talk", **extra})
+    args = {"title": "Best moment", "video_url": URL, "source_title": "Long talk",
+            "format": "long", **extra}
+    return _call(client, key, "nobs_submit_clip", args)
 
 
 def test_clip_goes_to_main_channel_privately_by_default(client, db_session, env, youtube,
@@ -112,7 +139,7 @@ def test_clip_goes_to_main_channel_privately_by_default(client, db_session, env,
 
 def test_falls_back_to_second_channel_when_main_not_connected(client, env, youtube, monkeypatch):
     connect(monkeypatch, main=False, clips=True)
-    _, out = _submit(client, _key(client))
+    _, out = _submit(client, _key(client), format="short", video_url=VURL)
     assert out["youtube"]["channel"] == "clips" and youtube.uploads[0][0] == "clips"
 
 
@@ -131,9 +158,12 @@ def test_nothing_connected_keeps_the_clip_and_says_why(client, db_session, env, 
     connect(monkeypatch)
     _, out = _submit(client, _key(client))
     assert out["youtube"]["uploaded"] is False
-    assert "No YouTube channel is connected" in out["youtube_error"]
+    assert "main YouTube channel isn't connected" in out["youtube_error"]  # long -> main only
     assert "NOT uploaded" in out["next_step"]
     assert db_session.query(Clip).count() == 1
+
+    _, short = _submit(client, _key(client), format="short", video_url=VURL, title="S")
+    assert "No YouTube channel is connected" in short["youtube_error"]
 
 
 def test_clips_from_one_source_are_grouped(client, db_session, env, youtube, monkeypatch):
@@ -151,7 +181,7 @@ def test_publish_only_when_asked_and_clip_stays_on_its_channel(client, db_sessio
                                                                monkeypatch):
     key = _key(client)
     connect(monkeypatch, main=False, clips=True)
-    _, out = _submit(client, key)  # lands privately on the second channel
+    _, out = _submit(client, key, format="short", video_url=VURL)  # private, second channel
     clip_id = out["clip_id"]
 
     connect(monkeypatch, main=True, clips=True)  # main gets connected later
@@ -217,7 +247,7 @@ def test_direct_clip_upload_endpoint(client, db_session, env, youtube, monkeypat
     response = client.post(
         f"/connector/upload-clip/{key}",
         data={"title": "From sandbox", "source_title": "Talk", "start_seconds": "12.5",
-              "end_seconds": "14.5"},
+              "end_seconds": "14.5", "format": "long"},
         files={"file": ("c.mp4", clip_mp4, "video/mp4")},
     )
     assert response.status_code == 200, response.text
@@ -225,10 +255,11 @@ def test_direct_clip_upload_endpoint(client, db_session, env, youtube, monkeypat
     clip = db_session.query(Clip).one()
     assert (clip.start_seconds, clip.end_seconds) == (12.5, 14.5)
 
-    bad = client.post(f"/connector/upload-clip/{key}", data={"title": "x"},
+    bad = client.post(f"/connector/upload-clip/{key}", data={"title": "x", "format": "long"},
                       files={"file": ("c.mp4", b"nope", "video/mp4")})
     assert bad.status_code == 400
-    assert client.post("/connector/upload-clip/nobs_ck_wrong", data={"title": "x"},
+    assert client.post("/connector/upload-clip/nobs_ck_wrong",
+                       data={"title": "x", "format": "long"},
                        files={"file": ("c.mp4", clip_mp4, "video/mp4")}).status_code == 401
 
 
@@ -240,3 +271,86 @@ def test_clips_page_publish_button_uses_the_clips_own_channel(client, db_session
     assert response.status_code == 200, response.text
     assert response.json()["youtube_channel"] == "main"
     assert youtube.publishes == [("main", "yt-main-1")]
+
+
+# ---- formats: short (vertical) vs long (horizontal) ------------------------
+
+
+def test_format_is_required_and_nothing_is_stored_without_it(client, db_session, env, monkeypatch):
+    connect(monkeypatch, main=True)
+    error, text = _submit(client, _key(client), format="")
+    assert error and "short" in text and "long" in text and "Ask Nobert" in text
+    error, _ = _submit(client, _key(client), format="medium")
+    assert error
+    assert db_session.query(Clip).count() == 0
+
+
+def test_short_must_be_vertical_and_long_must_be_horizontal(client, db_session, env, monkeypatch):
+    connect(monkeypatch, main=True, clips=True)
+    key = _key(client)
+
+    error, text = _submit(client, key, format="short", video_url=URL)  # horizontal file
+    assert error and "VERTICAL" in text and "160x120" in text and "crop=ih*9/16" in text
+
+    error, text = _submit(client, key, format="long", video_url=VURL)  # vertical file
+    assert error and "HORIZONTAL" in text
+
+    assert db_session.query(Clip).count() == 0
+
+
+def test_a_short_cannot_exceed_three_minutes(client, db_session, env, youtube, monkeypatch):
+    connect(monkeypatch, main=True)
+    error, text = _submit(client, _key(client), format="short", video_url=LONGV)
+    assert error and "180 seconds" in text and "181s" in text
+    assert db_session.query(Clip).count() == 0
+
+
+def test_clips_channel_never_takes_a_long_video(client, db_session, env, youtube, monkeypatch):
+    connect(monkeypatch, main=True, clips=True)
+    error, text = _submit(client, _key(client), format="long", channel="clips")
+    assert error and "only takes vertical Shorts" in text
+    assert db_session.query(Clip).count() == 0 and youtube.uploads == []
+
+
+def test_long_video_goes_to_main_even_on_auto_and_never_falls_back(
+    client, db_session, env, youtube, monkeypatch
+):
+    key = _key(client)
+    connect(monkeypatch, main=True, clips=True)
+    _, out = _submit(client, key, format="long")
+    assert out["youtube"]["channel"] == "main" and out["format"] == "long"
+
+    connect(monkeypatch, main=False, clips=True)  # only the vertical-only channel is connected
+    _, out = _submit(client, key, format="long", title="Another")
+    assert out["youtube"]["uploaded"] is False
+    assert "main YouTube channel isn't connected" in out["youtube_error"]
+    assert [u[0] for u in youtube.uploads] == ["main"]  # nothing went to the clips channel
+
+
+def test_shorts_get_the_shorts_tag_longs_do_not(client, env, youtube, monkeypatch):
+    connect(monkeypatch, main=True)
+    key = _key(client)
+    _submit(client, key, format="short", video_url=VURL, description="Why it works")
+    _submit(client, key, format="long", title="Long one", description="Full clip")
+    assert youtube.uploads[0][2].endswith("#Shorts") and "Why it works" in youtube.uploads[0][2]
+    assert youtube.uploads[1][2] == "Full clip"
+
+
+def test_short_on_main_channel_is_a_short(client, db_session, env, youtube, monkeypatch):
+    connect(monkeypatch, main=True, clips=True)
+    _, out = _submit(client, _key(client), format="short", video_url=VURL, channel="main")
+    assert out["youtube"]["channel"] == "main" and out["format"] == "short"
+    assert db_session.query(Clip).one().format == "short"
+
+
+def test_sideways_phone_video_with_rotation_flag_counts_as_vertical(tmp_path):
+    base, rotated = tmp_path / "base.mp4", tmp_path / "rot.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=duration=2:size=192x108:rate=10",
+         "-pix_fmt", "yuv420p", str(base)], check=True, capture_output=True)
+    subprocess.run(
+        ["ffmpeg", "-y", "-display_rotation:v", "90", "-i", str(base), "-c", "copy",
+         str(rotated)], check=True, capture_output=True)
+
+    info = importer.probe_video_info(rotated)
+    assert (info.width, info.height) == (108, 192) and info.vertical  # displayed, not stored

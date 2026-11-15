@@ -72,12 +72,32 @@ def _youtube() -> YouTubeConnector:
     return _youtube_for("main")
 
 
-def resolve_channel(requested: str | None) -> str:
+SHORT_MAX_SECONDS = 180  # YouTube Shorts: vertical/square, up to 3 minutes
+FORMATS = ("short", "long")
+
+
+def check_format_channel(fmt: str, requested: str | None) -> None:
+    """The second (clips) channel is vertical-only, so it takes Shorts and never
+    long videos. Checked BEFORE a clip is accepted, so a mismatch is a clear
+    refusal rather than a stored clip with nowhere to go."""
+    if fmt == "long" and (requested or "auto").strip().lower() == "clips":
+        raise PublishingError(
+            "The clips channel only takes vertical Shorts. A long video goes to the main "
+            "channel.",
+            status=422,
+        )
+
+
+def resolve_channel(requested: str | None, fmt: str | None = None) -> str:
     """"auto" (the default) means: the main channel if it is connected,
     otherwise the second (clips) channel. An explicit "main" or "clips" is
     honoured, or refused if that channel isn't connected — never silently
     swapped for the other one."""
     requested = (requested or "auto").strip().lower()
+    if fmt == "long":
+        # Long (horizontal) videos belong to the main channel only.
+        check_format_channel("long", requested)
+        requested = "main"
     if requested == "auto":
         for channel in CHANNELS:
             if channel_configured(channel):
@@ -228,12 +248,15 @@ def upload_clip(db: Session, clip: Clip, channel: str | None, publish: bool) -> 
     if clip.youtube_video_id:
         chosen = clip.youtube_channel or "clips"
     else:
-        chosen = resolve_channel(channel)
+        chosen = resolve_channel(channel, clip.format)
     youtube = _youtube_for(chosen)
 
     with _youtube_errors():
         if not clip.youtube_video_id:
-            result = youtube.upload_video(clip.clip_path, clip.title, clip.reason, [])
+            description = clip.reason
+            if clip.format == "short" and "#shorts" not in description.lower():
+                description = f"{description}\n\n#Shorts".strip()
+            result = youtube.upload_video(clip.clip_path, clip.title, description, [])
             clip.youtube_video_id = result.video_id
             clip.youtube_channel = chosen
             db.commit()

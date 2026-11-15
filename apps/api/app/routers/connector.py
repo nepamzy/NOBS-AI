@@ -275,6 +275,7 @@ def upload_clip(
     key: str,
     file: UploadFile = File(...),
     title: str = Form(...),
+    format: str = Form(default=""),
     description: str = Form(default=""),
     source_title: str = Form(default=clip_tools.DEFAULT_SOURCE_TITLE),
     start_seconds: float | None = Form(default=None),
@@ -305,6 +306,7 @@ def upload_clip(
                 end_seconds=end_seconds,
                 channel=channel,
                 publish=publish,
+                format=format,
             )
             clip = clip_tools.store_clip(db, user, request, storage)
     except ConnectorImportError as exc:
