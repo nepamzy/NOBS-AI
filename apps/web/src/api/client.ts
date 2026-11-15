@@ -8,6 +8,8 @@ import type {
   ChatResponse,
   Clip,
   ConnectionsStatus,
+  ConnectorKey,
+  ConnectorKeyCreated,
   ConnectionTestResult,
   CostCategory,
   CostEntry,
@@ -29,6 +31,12 @@ import type {
 } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+
+/** The connector link is built from the API address this app really talks to,
+ * so it can never point somewhere other than the server that issued the key. */
+export function connectorUrl(key: string): string {
+  return `${BASE_URL.replace(/\/$/, "")}/mcp/${key}`;
+}
 const TOKEN_STORAGE_KEY = "nobs_ai_token";
 
 // Video/Asset urls (e.g. "/storage/...") come back relative to the API
@@ -369,6 +377,15 @@ export const api = {
   listClips: (sourceVideoId: string) =>
     request<Clip[]>(`/source-videos/${sourceVideoId}/clips`),
   publishClip: (clipId: string) => request<Clip>(`/clips/${clipId}/publish`, { method: "POST" }),
+
+  listConnectorKeys: () => request<ConnectorKey[]>("/connector/keys"),
+  createConnectorKey: (name: string) =>
+    request<ConnectorKeyCreated>("/connector/keys", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  revokeConnectorKey: (id: string) =>
+    request<void>(`/connector/keys/${id}`, { method: "DELETE" }),
 
   getConnectionsStatus: () => request<ConnectionsStatus>("/connections/status"),
   testConnection: (providerId: string) =>

@@ -297,3 +297,18 @@ export interface ConnectionsStatus {
   providers: ProviderStatus[];
   youtube_channels: ChannelConnectionStatus[];
 }
+
+export interface ConnectorKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  last_used_at: string | null;
+  revoked: boolean;
+  created_at: string;
+}
+
+export interface ConnectorKeyCreated extends ConnectorKey {
+  /** The secret. Returned once, at creation, and never again. */
+  key: string;
+  connector_url: string;
+}

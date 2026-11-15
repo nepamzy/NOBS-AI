@@ -1,3 +1,5 @@
+import logging
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,6 +17,7 @@ from app.routers import (
     chat,
     clips,
     connections,
+    connector,
     health,
     payments,
     projects,
@@ -27,6 +30,26 @@ from app.routers import (
     waitlist_oauth,
 )
 from app.routers import settings as settings_router
+
+
+class _RedactConnectorKeys(logging.Filter):
+    """The Claude connector's secret travels in the URL path
+    (/mcp/<key>, /connector/upload/<key>) because that's all a Claude
+    custom-connector URL can carry. Without this, every request would write
+    the live key into the access log (and Render's log viewer)."""
+
+    _KEY = re.compile(r"nobs_ck_[A-Za-z0-9_-]+")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                self._KEY.sub("nobs_ck_[redacted]", a) if isinstance(a, str) else a
+                for a in record.args
+            )
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(_RedactConnectorKeys())
 
 
 @asynccontextmanager
@@ -54,6 +77,7 @@ app.include_router(admin.router)
 app.include_router(chat.router)
 app.include_router(clips.router)
 app.include_router(connections.router)
+app.include_router(connector.router)
 app.include_router(payments.router)
 app.include_router(projects.router)
 app.include_router(settings_router.router)

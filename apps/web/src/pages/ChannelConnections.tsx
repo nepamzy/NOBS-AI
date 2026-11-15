@@ -2,6 +2,7 @@ import { ExternalLink, Play } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api, errorMessage } from "../api/client";
 import type { ChannelConnectionStatus } from "../api/types";
+import { ClaudeConnector } from "../components/ClaudeConnector";
 import { LoadingState } from "../components/LoadingState";
 import { Button, ErrorState, Panel, StatusPill, type Tone } from "../components/ui";
 
@@ -133,6 +134,13 @@ export function ChannelConnections() {
             steps.
           </p>
         </Panel>
+      </div>
+
+      <div className="mt-6">
+        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-white/50">
+          Claude
+        </h2>
+        <ClaudeConnector />
       </div>
     </div>
   );

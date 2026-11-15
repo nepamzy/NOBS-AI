@@ -3,6 +3,7 @@ from app.models.assistant_memory import AssistantMemory
 from app.models.auth import AuthSession, SignupPin
 from app.models.clip import Clip
 from app.models.compliance import ComplianceReport
+from app.models.connector_key import ConnectorKey
 from app.models.cost_entry import CostEntry
 from app.models.jobs import GenerationJob, RenderJob
 from app.models.project import Project
@@ -25,6 +26,7 @@ __all__ = [
     "AuthSession",
     "Clip",
     "ComplianceReport",
+    "ConnectorKey",
     "CostEntry",
     "GenerationJob",
     "RenderJob",

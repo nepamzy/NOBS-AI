@@ -146,6 +146,12 @@ class Settings(BaseSettings):
     # to after Google's consent screen, success or failure.
     landing_base_url: str = "http://localhost:5173"
 
+    # --- Claude connector (apps/api/app/routers/connector.py) ---
+    # Largest video the connector will accept, in MB. 50 matches Supabase's
+    # free-tier per-file ceiling (the same reason clip uploads are capped);
+    # raise it only after moving off that tier.
+    connector_max_import_mb: int = 50
+
     # --- Auth ---
     # Peppers PIN-code and session-token hashes so a stolen DB dump alone
     # doesn't reveal valid codes/tokens. Must be set for auth to work at all
