@@ -220,6 +220,7 @@ export const api = {
     voice_preset?: string;
     style_preset?: string;
     run_research: boolean;
+    producer?: "runpod" | "claude";
     own_scenes?: {
       narration: string;
       visual_prompt: string;
@@ -257,6 +258,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  schedulePublish: (
+    videoId: string,
+    payload: { publish_at: string; title?: string; description?: string },
+  ) =>
+    request<Video>(`/videos/${videoId}/schedule-publish`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  cancelScheduledPublish: (videoId: string) =>
+    request<Video>(`/videos/${videoId}/schedule-publish`, { method: "DELETE" }),
   publishToYoutube: (videoId: string) =>
     request<Video>(`/videos/${videoId}/youtube/publish`, { method: "POST" }),
 

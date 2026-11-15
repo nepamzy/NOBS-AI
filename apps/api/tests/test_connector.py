@@ -150,9 +150,15 @@ def test_initialize_and_tools_list(client):
 
     tools = _rpc(client, key, "tools/list").json()["result"]["tools"]
     names = {t["name"] for t in tools}
-    assert "nobs_import_video" in names
-    # The connector must never be able to publish, upload to YouTube or delete.
-    assert not any(bad in n for n in names for bad in ("publish", "youtube", "delete", "schedule"))
+    # An exact allowlist: adding a tool must be a deliberate edit here. Publish and
+    # schedule exist because Nobert asked for them; delete/spend must never appear.
+    assert names == {
+        "nobs_import_video", "nobs_upload_instructions", "nobs_list_projects",
+        "nobs_list_videos", "nobs_get_video", "nobs_list_claude_jobs", "nobs_get_claude_job",
+        "nobs_complete_claude_job", "nobs_schedule_publish", "nobs_cancel_scheduled_publish",
+        "nobs_publish_video",
+    }
+    assert not any(bad in n for n in names for bad in ("delete", "spend", "pay"))
     assert all(t["inputSchema"]["type"] == "object" for t in tools)
 
 

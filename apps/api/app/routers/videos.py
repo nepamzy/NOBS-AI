@@ -4,6 +4,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app import publishing
 from app.auth.deps import get_current_user
 from app.config import settings
 from app.db import get_db
@@ -20,7 +21,12 @@ from app.models.video_clip import VideoClip
 from app.models.video_feedback import VideoFeedback
 from app.schemas.asset import AssetRead
 from app.schemas.script import SceneRead, SceneRegenerateRequest, SceneUpdate, ScriptRead
-from app.schemas.video import ClipRecoverRequest, VideoCreate, VideoRead
+from app.schemas.video import (
+    ClipRecoverRequest,
+    SchedulePublishRequest,
+    VideoCreate,
+    VideoRead,
+)
 from app.schemas.video_feedback import VideoFeedbackCreate, VideoFeedbackRead
 from app.schemas.youtube import YouTubeUploadRequest
 from services.ai.script.engine import SceneDraft
@@ -70,6 +76,7 @@ def create_video(
         target_duration_seconds=payload.target_duration_seconds,
         voice_preset=payload.voice_preset,
         style_preset=payload.style_preset,
+        producer=payload.producer,
         stage=PipelineStage.TOPIC,
     )
     db.add(video)
@@ -488,6 +495,31 @@ def publish_to_youtube(
     db.commit()
     db.refresh(video)
     return video
+
+
+@router.post("/{video_id}/schedule-publish", response_model=VideoRead)
+def schedule_publish(
+    video_id: uuid.UUID,
+    payload: SchedulePublishRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Video:
+    """Pick the date and time a finished video goes public. Nothing is
+    uploaded or published now — the worker does it when that time arrives."""
+    video = _owned_video_or_404(db, video_id, user)
+    try:
+        return publishing.schedule_publish(
+            db, video, payload.publish_at, payload.title, payload.description
+        )
+    except publishing.PublishingError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+
+@router.delete("/{video_id}/schedule-publish", response_model=VideoRead)
+def cancel_scheduled_publish(
+    video_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> Video:
+    return publishing.cancel_scheduled_publish(db, _owned_video_or_404(db, video_id, user))
 
 
 @router.post("/{video_id}/feedback", response_model=VideoFeedbackRead, status_code=201)

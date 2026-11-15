@@ -9,8 +9,10 @@
   * POST /connector/upload/{key} takes an MP4 directly (multipart) for a
     Claude session whose video only exists in its sandbox.
 
-A key can import videos and read status. It can NOT publish, upload to
-YouTube, delete, or spend — see app/connector/mcp.py.
+A key can import/complete videos, read status, and schedule or publish a
+finished video when told to. It can NOT delete or spend — see
+app/connector/mcp.py. (Publishing is only ever "private upload, then public on
+an explicit request" — see app/publishing.py.)
 """
 
 import logging
@@ -44,7 +46,9 @@ from app.connector.importer import ConnectorImportError, ImportRequest
 from app.connector.mcp import RpcContext, _video_summary, handle_message
 from app.db import get_db
 from app.models.connector_key import ConnectorKey
+from app.models.project import Project
 from app.models.user import User
+from app.models.video import Video
 from app.rate_limit import rate_limit
 from services.storage.factory import get_storage_backend
 
@@ -204,7 +208,8 @@ def _save_upload(upload: UploadFile, dest: Path, max_bytes: int) -> None:
 def upload_finished_video(
     key: str,
     file: UploadFile = File(...),
-    title: str = Form(...),
+    title: str = Form(default=""),
+    video_id: uuid.UUID | None = Form(default=None),
     project_name: str = Form(default=importer.DEFAULT_PROJECT_NAME),
     description: str = Form(default=""),
     hook: str = Form(default=""),
@@ -226,7 +231,7 @@ def upload_finished_video(
             video_path = work / "video.mp4"
             _save_upload(file, video_path, settings.connector_max_import_mb * 1024 * 1024)
             request = ImportRequest(
-                title=title,
+                title=title or "Untitled",
                 project_name=project_name,
                 description=description,
                 hook=hook,
@@ -241,7 +246,21 @@ def upload_finished_video(
                     dest = work / f"{stem}{importer.suffix_for(upload.filename, kind)}"
                     _save_upload(upload, dest, kind[2])
                     setattr(request, attr, dest)
-            video = importer.import_finished_video(db, user, request, storage, work)
+            if video_id is not None:
+                # Finishing a video that was approved in NOBS AI for Claude.
+                target = (
+                    db.query(Video)
+                    .join(Project, Project.id == Video.project_id)
+                    .filter(Video.id == video_id, Project.owner_id == user.id)
+                    .one_or_none()
+                )
+                if target is None:
+                    raise HTTPException(status_code=404, detail="Video not found")
+                video = importer.complete_claude_job(db, target, request, storage, work)
+            else:
+                if not title.strip():
+                    raise ConnectorImportError("A title is required.")
+                video = importer.import_finished_video(db, user, request, storage, work)
     except ConnectorImportError as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc

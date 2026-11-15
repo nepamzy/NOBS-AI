@@ -114,6 +114,7 @@ export function CreateVideo() {
   const [scriptTitle, setScriptTitle] = useState("");
   const [scriptHook, setScriptHook] = useState("");
   const [ownScenes, setOwnScenes] = useState<OwnScene[]>([emptyScene()]);
+  const [producer, setProducer] = useState<"runpod" | "claude">("runpod");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -173,6 +174,7 @@ export function CreateVideo() {
         voice_preset: voicePreset,
         style_preset: stylePreset,
         run_research: runResearch,
+        producer,
         ...(hasOwnScript
           ? {
               own_scenes: ownScenes.map((s) => ({
@@ -453,6 +455,44 @@ export function CreateVideo() {
                 <span className="text-sm text-white/70">Style</span>
                 <StylePicker value={stylePreset} onChange={setStylePreset} compact />
               </label>
+              <fieldset className="flex flex-col gap-1.5">
+                <legend className="text-sm text-white/70">Who makes the voice and video?</legend>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {(
+                    [
+                      {
+                        id: "runpod",
+                        name: "NOBS AI (Runpod)",
+                        note: "NOBS AI's own pipeline. Paid GPU + voice, each step needs your approval.",
+                      },
+                      {
+                        id: "claude",
+                        name: "My Claude session",
+                        note: "After you approve the script and storyboard, your connected Claude produces it and hands it back. Nothing spent on Runpod or voice.",
+                      },
+                    ] as const
+                  ).map((option) => (
+                    <label
+                      key={option.id}
+                      className={`cursor-pointer rounded-lg border p-3 text-left transition-colors ${
+                        producer === option.id
+                          ? "border-accent-400/60 bg-accent-500/10"
+                          : "border-white/10 bg-black/20 hover:border-white/20"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="producer"
+                        className="sr-only"
+                        checked={producer === option.id}
+                        onChange={() => setProducer(option.id)}
+                      />
+                      <span className="block text-sm font-medium text-white">{option.name}</span>
+                      <span className="mt-1 block text-xs text-white/50">{option.note}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
             </div>
 
             {error && (

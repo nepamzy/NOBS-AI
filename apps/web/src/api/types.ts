@@ -7,6 +7,7 @@ export type PipelineStage =
   | "script"
   | "storyboard_review"
   | "compliance_check"
+  | "awaiting_claude"
   | "voice"
   | "video_generation"
   | "assembly"
@@ -34,6 +35,10 @@ export interface Video {
   stage_progress_percent: number;
   stage_detail: string;
   storyboard_approved: boolean;
+  producer: "runpod" | "claude";
+  /** ISO time (UTC) the worker will publish this video, if one is scheduled. */
+  scheduled_publish_at: string | null;
+  publish_error: string | null;
   final_video_path: string | null;
   final_video_url: string | null;
   thumbnail_url: string | null;

@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
@@ -34,6 +35,9 @@ class VideoCreate(BaseModel):
     own_scenes: list[OwnSceneCreate] | None = Field(default=None, min_length=1)
     script_title: str = ""
     script_hook: str = ""
+    # Who produces the voiceover/footage once the storyboard is approved:
+    # NOBS AI's own pipeline ("runpod") or a connected Claude session ("claude").
+    producer: Literal["runpod", "claude"] = "runpod"
 
 
 class VideoRead(BaseModel):
@@ -49,6 +53,9 @@ class VideoRead(BaseModel):
     stage_progress_percent: int
     stage_detail: str
     storyboard_approved: bool
+    producer: str
+    scheduled_publish_at: datetime | None
+    publish_error: str | None
     final_video_path: str | None
     auto_publish: bool
     youtube_video_id: str | None
@@ -68,6 +75,14 @@ class VideoRead(BaseModel):
     @property
     def thumbnail_url(self) -> str | None:
         return to_url(self.thumbnail_path)
+
+
+class SchedulePublishRequest(BaseModel):
+    # Must carry a time zone (an ISO 8601 offset or Z) — a bare "17:00" is
+    # rejected by the service rather than guessed at.
+    publish_at: datetime
+    title: str | None = Field(default=None, max_length=500)
+    description: str | None = Field(default=None, max_length=5000)
 
 
 class ClipRecoverRequest(BaseModel):

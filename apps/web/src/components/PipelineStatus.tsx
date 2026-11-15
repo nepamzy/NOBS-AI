@@ -16,6 +16,8 @@ export const STAGE_ORDER: { key: PipelineStage; label: string }[] = [
 export function stageIndexOf(stage: PipelineStage): number {
   if (stage === "completed") return STAGE_ORDER.length;
   if (stage === "topic") return -1;
+  // Claude is making the voice and footage, so show it at the Voice step.
+  if (stage === "awaiting_claude") return STAGE_ORDER.findIndex((s) => s.key === "voice");
   return STAGE_ORDER.findIndex((s) => s.key === stage);
 }
 

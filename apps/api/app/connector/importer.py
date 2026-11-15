@@ -289,6 +289,48 @@ def import_finished_video(
     return video
 
 
+def complete_claude_job(
+    db: Session,
+    video: Video,
+    request: ImportRequest,
+    storage: StorageBackend,
+    work_dir: Path,
+) -> Video:
+    """Attaches a finished video to a video that was approved in NOBS AI and is
+    waiting on Claude (producer="claude", stage AWAITING_CLAUDE), and marks it
+    COMPLETED. Its script/scenes already exist, so nothing is created here —
+    only the files. Commits on success; leaves nothing half-written on failure."""
+    if request.video_path is None:
+        raise ConnectorImportError("No video file was provided.")
+    if video.producer != "claude" or video.stage != PipelineStage.AWAITING_CLAUDE:
+        raise ConnectorImportError(
+            "That video isn't waiting for Claude "
+            f"(producer={video.producer}, stage={video.stage.value}). "
+            "Use nobs_list_claude_jobs to see which videos are."
+        )
+    duration = probe_video(request.video_path)
+    try:
+        video.final_video_path = _store(storage, request.video_path, f"{video.id}/final.mp4")
+        db.add(
+            Asset(
+                video_id=video.id,
+                asset_type=AssetType.FINAL_VIDEO,
+                path=video.final_video_path,
+                label="Final video",
+            )
+        )
+        _store_extras(db, video, request, storage, work_dir, duration)
+        video.stage = PipelineStage.COMPLETED
+        video.stage_progress_percent = 100
+        video.stage_detail = ""
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(video)
+    return video
+
+
 def _write_script(
     db: Session, video: Video, request: ImportRequest, title: str, duration_seconds: int
 ) -> None:

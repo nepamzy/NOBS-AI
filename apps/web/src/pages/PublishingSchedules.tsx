@@ -3,9 +3,21 @@ import { Link } from "react-router-dom";
 import { api, errorMessage } from "../api/client";
 import type { Clip, Project, SourceVideo, UploadSchedule, Video } from "../api/types";
 import { LoadingState } from "../components/LoadingState";
+import { PublishCalendar } from "../components/PublishCalendar";
+import { formatLocal } from "../components/SchedulePublish";
 import { ErrorState, Panel, StatusPill, type Tone } from "../components/ui";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+/** The weekly schedules fire in UTC. Show what that is on the viewer's own clock. */
+function localEquivalent(dayOfWeek: number, hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const now = new Date();
+  // Next date (UTC) whose weekday matches; JS Sunday=0, ours Monday=0.
+  const daysAhead = (dayOfWeek + 1 - now.getUTCDay() + 7) % 7;
+  const at = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysAhead, h, m));
+  return at.toLocaleString(undefined, { weekday: "long", hour: "2-digit", minute: "2-digit" });
+}
 
 export function PublishingSchedules() {
   const [schedules, setSchedules] = useState<UploadSchedule[] | null>(null);
@@ -85,6 +97,10 @@ export function PublishingSchedules() {
     return runAction(schedule.id, () => api.deleteSchedule(schedule.id));
   }
 
+  const upcoming = videos
+    .filter((v) => v.scheduled_publish_at)
+    .sort((a, b) => +new Date(a.scheduled_publish_at as string) - +new Date(b.scheduled_publish_at as string));
+  const failedSchedules = videos.filter((v) => v.publish_error && !v.youtube_published);
   const uploadedVideos = videos.filter((v) => v.youtube_video_id);
   const allClips = Object.values(clipsBySource).flat();
   const publishedClips = allClips.filter((c) => c.youtube_published);
@@ -94,7 +110,7 @@ export function PublishingSchedules() {
   if (!schedules) return <LoadingState />;
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-4xl">
       <h1 className="font-heading text-2xl font-semibold text-white">Publishing &amp; Schedules</h1>
       <p className="mt-1 text-white/60">
         Every recurring schedule across your projects, and a real record of what's actually been
@@ -106,6 +122,43 @@ export function PublishingSchedules() {
         <div className="mt-3">
           <ErrorState message={error} />
         </div>
+      )}
+
+      <h2 className="mt-8 mb-3 text-sm font-medium uppercase tracking-wide text-white/50">
+        Publish calendar
+      </h2>
+      <PublishCalendar videos={videos} />
+      <p className="mt-2 text-xs text-white/40">
+        To schedule a video, open it and use "Publish on a date" — or tell Claude the exact date,
+        time and time zone.
+      </p>
+      {upcoming.length > 0 && (
+        <ul className="mt-3 flex flex-col gap-2">
+          {upcoming.map((video) => (
+            <li key={video.id}>
+              <RecordRow
+                title={video.topic}
+                to={`/videos/${video.id}`}
+                tone="info"
+                label={`Goes public ${formatLocal(video.scheduled_publish_at as string)}`}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+      {failedSchedules.length > 0 && (
+        <ul className="mt-3 flex flex-col gap-2">
+          {failedSchedules.map((video) => (
+            <li key={video.id}>
+              <RecordRow
+                title={video.topic}
+                to={`/videos/${video.id}`}
+                tone="error"
+                label="Scheduled publish failed"
+              />
+            </li>
+          ))}
+        </ul>
       )}
 
       <h2 className="mt-8 mb-3 text-sm font-medium uppercase tracking-wide text-white/50">
@@ -126,6 +179,10 @@ export function PublishingSchedules() {
                     <div className="min-w-0">
                       <p className="text-white">
                         {DAYS[schedule.day_of_week]} at {schedule.trigger_time} UTC
+                        <span className="text-white/40">
+                          {" "}
+                          ({localEquivalent(schedule.day_of_week, schedule.trigger_time)} your time)
+                        </span>
                         {project && (
                           <>
                             {" · "}

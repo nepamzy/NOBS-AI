@@ -76,8 +76,9 @@ export function ClaudeConnector() {
         <div className="min-w-0 flex-1">
           <h3 className="font-heading text-base font-semibold text-white">Claude connector</h3>
           <p className="mt-1 text-sm text-white/60">
-            Lets a Claude session hand a finished video straight to NOBS AI. It lands as a
-            completed project for you to review — Claude can never publish or upload to YouTube.
+            Lets a Claude session hand a finished video to NOBS AI, or produce one you approved
+            here. Finished videos wait for your review. Claude only publishes or schedules when
+            you tell it to, for that exact video; it can't delete anything or spend money.
           </p>
         </div>
         <Button onClick={handleCreate} disabled={busy}>

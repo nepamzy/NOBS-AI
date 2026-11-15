@@ -3,7 +3,7 @@ processing). Listens on both job queues the API enqueues to (video
 pipeline + clipping pipeline, see app/jobs/queue.py) and runs jobs from
 app.jobs.tasks / app.jobs.clip_tasks (apps/api). Also runs two periodic
 checks (services/scheduling) in a background thread alongside it — the
-upload-schedule due-check, and an auto-retry check that resumes a video
+upload-schedule due-check, a scheduled-publish check, and an auto-retry check that resumes a video
 that crashed mid-pipeline within seconds instead of leaving it to rot
 until a human clicks Continue (see auto_retry.py's docstring for why that
 gap matters) — one process, one Render service, instead of separate ones
@@ -28,6 +28,7 @@ from app.jobs.queue import clip_queue, pipeline_queue
 from rq import Worker
 
 from services.scheduling.auto_retry import AutoRetryRunner
+from services.scheduling.publish_scheduler import PublishSchedulerRunner
 from services.scheduling.scheduler import SchedulerRunner
 
 if __name__ == "__main__":
@@ -38,6 +39,9 @@ if __name__ == "__main__":
     # above instead of starting a second one.
     auto_retry = AutoRetryRunner(SessionLocal, scheduler.scheduler)
     auto_retry.start()
+
+    # Publishes videos whose scheduled date/time has arrived.
+    PublishSchedulerRunner(SessionLocal, scheduler.scheduler).start()
 
     conn = redis.from_url(settings.redis_url)
     worker = Worker([pipeline_queue, clip_queue], connection=conn)

@@ -1,7 +1,8 @@
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -44,6 +45,11 @@ class Video(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     storyboard_approved: Mapped[bool] = mapped_column(default=False)
 
+    # Who makes the voiceover/footage after the storyboard is approved:
+    # "runpod" = NOBS AI's own pipeline (Chatterbox/ElevenLabs + Wan), or
+    # "claude" = a Claude session connected through the connector.
+    producer: Mapped[str] = mapped_column(String(20), default="runpod", server_default="runpod")
+
     final_video_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     # Filename picked from the owner's music library folder (services/rendering
     # /music_library.py) — recorded so the next video for the same owner can
@@ -66,6 +72,17 @@ class Video(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # human instead of silently re-billing forever. Reset to 0 by a manual
     # Restart/Continue, so a human stepping in always earns a fresh budget.
     auto_retry_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # One-off scheduled publish (set in the app or by Claude through the
+    # connector). The worker (services/scheduling/publish_scheduler.py) uploads
+    # privately if needed and makes the video public once this time passes.
+    # Cleared when it fires or fails; a failure leaves publish_error for the UI.
+    scheduled_publish_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    youtube_title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    youtube_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    publish_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     project: Mapped["Project"] = relationship(back_populates="videos")
     script: Mapped["Script | None"] = relationship(

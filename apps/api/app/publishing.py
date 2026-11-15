@@ -1,0 +1,162 @@
+"""Putting a finished video on YouTube, now or at a chosen time. One place so
+the app's buttons, the connector's tools and the worker's timer all follow the
+same rules.
+
+Hard rules (CLAUDE.md Part 1 — publishing is externally visible):
+  * Upload is always PRIVATE (services/connectors/youtube/adapter.py). Making
+    it public is only ever `publish_now`, which is only called because a
+    person asked for that exact video — directly, or by telling Claude.
+  * A schedule needs a time zone-aware future time, so "5pm" can never be
+    silently read as the server's 5pm.
+"""
+
+import logging
+from datetime import UTC, datetime, timedelta
+
+import httpx
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.models.enums import PipelineStage
+from app.models.script import Script
+from app.models.video import Video
+from services.common.errors import EngineNotConfiguredError
+from services.connectors.youtube.adapter import YouTubeConnector
+
+logger = logging.getLogger(__name__)
+
+# A schedule must be at least this far ahead, so the minute-by-minute worker
+# can't be asked to fire "right now" through the scheduling path (use publish
+# now for that), and a typo'd past date is rejected instead of firing at once.
+MIN_LEAD = timedelta(minutes=2)
+
+
+class PublishingError(Exception):
+    """Something the caller can fix. `status` is the HTTP status the REST layer
+    should use; the connector just shows the message."""
+
+    def __init__(self, message: str, status: int = 409):
+        super().__init__(message)
+        self.status = status
+
+
+def _youtube() -> YouTubeConnector:
+    return YouTubeConnector(
+        settings.google_youtube_client_id,
+        settings.google_youtube_client_secret,
+        settings.google_youtube_refresh_token,
+    )
+
+
+def require_youtube_configured() -> None:
+    if not (
+        settings.google_youtube_client_id
+        and settings.google_youtube_client_secret
+        and settings.google_youtube_refresh_token
+    ):
+        raise PublishingError(
+            "YouTube isn't connected yet (see YOUTUBE_SETUP.md), so nothing can be "
+            "published or scheduled.",
+            status=402,
+        )
+
+
+def _require_publishable(video: Video) -> None:
+    if video.stage != PipelineStage.COMPLETED or not video.final_video_path:
+        raise PublishingError("This video isn't finished yet, so it can't be published.")
+    if video.youtube_published:
+        raise PublishingError("This video is already public on YouTube.")
+
+
+def default_title_and_description(db: Session, video: Video) -> tuple[str, str]:
+    script = db.query(Script).filter(Script.video_id == video.id).one_or_none()
+    return (script.title if script else video.topic), (script.hook if script else video.topic)
+
+
+def schedule_publish(
+    db: Session,
+    video: Video,
+    publish_at: datetime,
+    title: str | None = None,
+    description: str | None = None,
+) -> Video:
+    _require_publishable(video)
+    require_youtube_configured()
+    if publish_at.tzinfo is None:
+        raise PublishingError(
+            "The publish time must include a time zone (e.g. 2026-12-01T17:00:00+01:00).",
+            status=422,
+        )
+    publish_at = publish_at.astimezone(UTC)
+    if publish_at < datetime.now(UTC) + MIN_LEAD:
+        raise PublishingError("That time is in the past (or under 2 minutes away).", status=422)
+
+    default_title, default_description = default_title_and_description(db, video)
+    video.scheduled_publish_at = publish_at
+    video.youtube_title = (title or video.youtube_title or default_title).strip()[:500]
+    video.youtube_description = (
+        description if description is not None else video.youtube_description
+    ) or default_description
+    video.publish_error = None
+    db.commit()
+    db.refresh(video)
+    return video
+
+
+def cancel_scheduled_publish(db: Session, video: Video) -> Video:
+    video.scheduled_publish_at = None
+    db.commit()
+    db.refresh(video)
+    return video
+
+
+def publish_now(
+    db: Session,
+    video: Video,
+    title: str | None = None,
+    description: str | None = None,
+) -> Video:
+    """Uploads privately first if it isn't on YouTube yet, then makes it
+    public. Each step is committed on its own, so a failure after the upload
+    never loses the upload."""
+    _require_publishable(video)
+    require_youtube_configured()
+    youtube = _youtube()
+
+    try:
+        if not video.youtube_video_id:
+            default_title, default_description = default_title_and_description(db, video)
+            result = youtube.upload_video(
+                video.final_video_path,
+                (title or video.youtube_title or default_title).strip(),
+                (description if description is not None else video.youtube_description)
+                or default_description,
+                [],
+            )
+            video.youtube_video_id = result.video_id
+            db.commit()
+        youtube.publish_video(video.youtube_video_id)
+    except EngineNotConfiguredError as exc:
+        raise PublishingError(str(exc), status=402) from exc
+    except httpx.HTTPStatusError as exc:
+        code = exc.response.status_code
+        hint = (
+            "the YouTube connection was rejected — reconnect it in Channel Connections"
+            if code in (400, 401, 403)
+            else "try again in a few minutes"
+        )
+        raise PublishingError(
+            f"Google/YouTube answered HTTP {code}: {hint}.", status=502
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise PublishingError(
+            f"Couldn't reach YouTube ({type(exc).__name__}); try again in a few minutes.",
+            status=502,
+        ) from exc
+
+    video.youtube_published = True
+    video.scheduled_publish_at = None
+    video.publish_error = None
+    db.commit()
+    db.refresh(video)
+    return video

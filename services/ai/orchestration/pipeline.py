@@ -261,10 +261,26 @@ def advance_one_stage(video, db: Session, ctx: PipelineContext, run_research: bo
                 "Compliance check failed:\n" + "\n".join(f"- {b}" for b in result.blockers),
             )
 
-        video.stage = PipelineStage.VOICE
+        # A video Nobert chose to have Claude produce stops here instead of
+        # starting NOBS AI's own (paid) voice/GPU stages — nothing below runs
+        # for it, so choosing Claude spends nothing on Runpod/voice.
+        video.stage = (
+            PipelineStage.AWAITING_CLAUDE if video.producer == "claude" else PipelineStage.VOICE
+        )
         video.stage_detail = ""
         db.commit()
         return
+
+    if stage == PipelineStage.AWAITING_CLAUDE:
+        # Not an error and not a crash: the work is simply someone else's to
+        # do. The connector's nobs_complete_claude_job moves it to COMPLETED.
+        _block(
+            video,
+            db,
+            "awaiting_claude",
+            "Approved. Waiting for your Claude session to pick this up and hand back the "
+            "finished video (it uses the NOBS AI connector).",
+        )
 
     if stage == PipelineStage.VOICE:
         if ctx.test_no_audio:

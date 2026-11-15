@@ -9,6 +9,11 @@ class PipelineStage(str, enum.Enum):
     SCRIPT = "script"
     STORYBOARD_REVIEW = "storyboard_review"
     COMPLIANCE_CHECK = "compliance_check"
+    # Only for videos with producer="claude": the approved script/storyboard is
+    # parked here until a Claude session picks it up through the connector,
+    # makes the voiceover/footage itself and hands the finished video back
+    # (app/connector/mcp.py: nobs_complete_claude_job).
+    AWAITING_CLAUDE = "awaiting_claude"
     VOICE = "voice"
     VIDEO_GENERATION = "video_generation"
     ASSEMBLY = "assembly"

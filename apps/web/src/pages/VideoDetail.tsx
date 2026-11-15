@@ -131,8 +131,11 @@ export function VideoDetail() {
   async function handleApprove() {
     if (!videoId) return;
     const confirmed = window.confirm(
-      "Approve this storyboard? This kicks off voice and video generation for every scene — " +
-        "the first step that can actually cost money or GPU time. Review the scenes above first.",
+      video?.producer === "claude"
+        ? "Approve this storyboard? NOBS AI will not generate anything — your connected Claude " +
+            "session picks it up to make the voiceover and video. Review the scenes above first."
+        : "Approve this storyboard? This kicks off voice and video generation for every scene — " +
+            "the first step that can actually cost money or GPU time. Review the scenes above first.",
     );
     if (!confirmed) return;
     setApproving(true);
@@ -192,7 +195,7 @@ export function VideoDetail() {
           <StatusPill tone={tone} label={label} />
         </div>
         <div className="flex gap-2">
-          {!["topic", "storyboard_review", "completed"].includes(video.stage) && (
+          {!["topic", "storyboard_review", "awaiting_claude", "completed"].includes(video.stage) && (
             <Button variant="secondary" size="sm" onClick={handleContinue} disabled={continuing}>
               {continuing ? "Continuing…" : "Continue"}
             </Button>
@@ -202,6 +205,16 @@ export function VideoDetail() {
           </Button>
         </div>
       </div>
+      {video.stage === "awaiting_claude" && (
+        <Panel className="mt-4">
+          <p className="text-sm font-medium text-white">Waiting for Claude</p>
+          <p className="mt-1 text-xs text-white/50">
+            The script and storyboard are approved. Your Claude session picks this up through the
+            NOBS AI connector, makes the voiceover and video, and hands it back here — nothing is
+            spent on Runpod or voice. Tell Claude: "check NOBS AI for jobs to produce".
+          </p>
+        </Panel>
+      )}
       {(video.stage === "video_generation" ||
         (video.stage === "failed" && /Crashed at 'video_generation'/.test(video.stage_detail))) && (
         <Panel className="mt-4">

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { Video } from "../api/types";
+import { SchedulePublish } from "./SchedulePublish";
 
 export function VideoPublishing({
   video,
@@ -116,6 +117,15 @@ export function VideoPublishing({
               {publishing ? "Publishing…" : "Publish (make public)"}
             </button>
           </>
+        )}
+
+        {!video.youtube_published && (
+          <SchedulePublish
+            video={video}
+            title={title}
+            description={description}
+            onUpdate={onUpdate}
+          />
         )}
 
         {error && <p className="mt-2 text-sm text-red-400">{error}</p>}

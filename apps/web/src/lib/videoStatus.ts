@@ -11,6 +11,8 @@ export function isBlocked(video: Video): boolean {
   if (video.stage === "failed") return true;
   if (video.stage === "completed") return false;
   if (video.stage === "storyboard_review") return false;
+  // Waiting on a Claude session is normal, not a problem.
+  if (video.stage === "awaiting_claude") return false;
   return video.stage_detail.trim() !== "";
 }
 
@@ -48,6 +50,7 @@ export function videoStatus(video: Video): { tone: Tone; label: string } {
   if (video.stage === "completed") return { tone: "success", label: "Completed" };
   if (isBlocked(video)) return { tone: "error", label: "Needs Attention" };
   if (isAwaitingApproval(video)) return { tone: "warning", label: "Awaiting Approval" };
+  if (video.stage === "awaiting_claude") return { tone: "info", label: "Waiting for Claude" };
   return { tone: "info", label: "Processing" };
 }
 
