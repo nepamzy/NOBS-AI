@@ -28,10 +28,13 @@ from sqlalchemy.orm import Session
 
 from app import publishing
 from app.config import settings
+from app.connector import clips as clip_tools
 from app.connector import importer, jobs
 from app.connector.importer import ConnectorImportError, ImportRequest, SceneInput
+from app.models.clip import Clip
 from app.models.enums import PipelineStage
 from app.models.project import Project
+from app.models.source_video import SourceVideo
 from app.models.user import User
 from app.models.video import Video
 from app.storage import to_url
@@ -50,10 +53,14 @@ _INSTRUCTIONS = (
     "2) Produce a video Nobert approved in NOBS AI: nobs_list_claude_jobs, then "
     "nobs_get_claude_job for the script, scenes, voice and style, make the voiceover and "
     "footage, then nobs_complete_claude_job with the finished MP4.\n"
+    "3) Clips you cut yourself: nobs_submit_clip (one call per finished clip). NOBS AI files it "
+    "and uploads it to YouTube as PRIVATE — by default to the main channel, or the second "
+    "channel if the main one isn't connected.\n"
     "If a file only exists in your sandbox, call nobs_upload_instructions.\n"
     "PUBLISHING: you may call nobs_schedule_publish or nobs_publish_video ONLY when Nobert has "
     "explicitly told you, in this conversation, to publish or schedule that specific video "
-    "(and for scheduling, the exact date, time and time zone). Never publish or schedule on "
+    "(and for scheduling, the exact date, time and time zone). The same goes for publish=true "
+    "on nobs_submit_clip and for nobs_publish_clip. Never publish or schedule on "
     "your own initiative, never guess a time zone, and always tell him exactly what you did. "
     "Otherwise a finished video waits for him in NOBS AI."
 )
@@ -177,6 +184,15 @@ def _tool_upload_instructions(ctx: RpcContext, args: dict) -> dict:
                 f'curl -sS -X POST "{base}/connector/upload/{ctx.key}" '
                 '-F "file=@/path/to/video.mp4" -F "title=Your video title"'
             ),
+            "clip_command": (
+                f'curl -sS -X POST "{base}/connector/upload-clip/{ctx.key}" '
+                '-F "file=@/path/to/clip.mp4" -F "title=Clip title" '
+                '-F "source_title=Title of the long video"'
+            ),
+            "clip_form_fields": [
+                "description", "start_seconds", "end_seconds",
+                "channel (auto|main|clips)", "publish (true only if Nobert said so)",
+            ],
             "optional_form_fields": [
                 "video_id (to finish a job from nobs_list_claude_jobs instead of creating a "
                 "new video)",
@@ -358,6 +374,90 @@ def _tool_publish_video(ctx: RpcContext, args: dict) -> dict:
     return _text(summary)
 
 
+def _tool_submit_clip(ctx: RpcContext, args: dict) -> dict:
+    title = str(args.get("title") or "").strip()
+    video_url = str(args.get("video_url") or "").strip()
+    if not title or not video_url:
+        return _text("Both 'title' and 'video_url' are required.", is_error=True)
+
+    def _seconds(name):
+        raw = args.get(name)
+        if raw is None or raw == "":
+            return None
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            raise ConnectorImportError(f"'{name}' must be a number of seconds.") from None
+
+    start, end = _seconds("start_seconds"), _seconds("end_seconds")
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "clip.mp4"
+        importer.download_to_file(video_url, path, settings.connector_max_import_mb * 1024 * 1024)
+        request = clip_tools.ClipRequest(
+            title=title,
+            video_path=path,
+            description=str(args.get("description") or ""),
+            source_title=str(args.get("source_title") or clip_tools.DEFAULT_SOURCE_TITLE),
+            start_seconds=start,
+            end_seconds=end,
+            channel=str(args.get("channel") or "auto"),
+            publish=args.get("publish") is True,
+        )
+        clip = clip_tools.store_clip(ctx.db, ctx.user, request, _storage())
+
+    clip, error = clip_tools.upload_stored_clip(ctx.db, clip, request.channel, request.publish)
+    summary = clip_tools.clip_summary(clip, error)
+    summary["next_step"] = (
+        "Published — it is public. Tell Nobert."
+        if clip.youtube_published
+        else "Uploaded to YouTube as private; Nobert (or you, if he says so) publishes it."
+        if clip.youtube_video_id
+        else "Stored in NOBS AI but NOT uploaded — see youtube_error. Tell Nobert why."
+    )
+    return _text(summary)
+
+
+def _tool_publish_clip(ctx: RpcContext, args: dict) -> dict:
+    try:
+        clip_id = uuid.UUID(str(args.get("clip_id") or ""))
+    except ValueError:
+        return _text("'clip_id' must be a clip id from nobs_list_clips.", is_error=True)
+    clip = (
+        ctx.db.query(Clip)
+        .join(SourceVideo, SourceVideo.id == Clip.source_video_id)
+        .filter(Clip.id == clip_id, SourceVideo.owner_id == ctx.user.id)
+        .one_or_none()
+    )
+    if clip is None:
+        return _text("Clip not found.", is_error=True)
+    if args.get("confirm") is not True:
+        return _text(
+            "Not published. Set confirm=true ONLY if Nobert explicitly told you, in this "
+            "conversation, to publish this specific clip.",
+            is_error=True,
+        )
+    clip, error = clip_tools.upload_stored_clip(
+        ctx.db, clip, str(args.get("channel") or "auto"), True
+    )
+    return _text(clip_tools.clip_summary(clip, error), is_error=error is not None)
+
+
+def _tool_list_clips(ctx: RpcContext, args: dict) -> dict:
+    try:
+        limit = min(max(int(args.get("limit") or 20), 1), 50)
+    except (TypeError, ValueError):
+        limit = 20
+    rows = (
+        ctx.db.query(Clip)
+        .join(SourceVideo, SourceVideo.id == Clip.source_video_id)
+        .filter(SourceVideo.owner_id == ctx.user.id)
+        .order_by(Clip.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return _text([clip_tools.clip_summary(c) for c in rows])
+
+
 _STR = {"type": "string"}
 
 TOOLS: dict[str, dict] = {
@@ -483,6 +583,48 @@ TOOLS: dict[str, dict] = {
         },
         "handler": _tool_publish_video,
     },
+    "nobs_submit_clip": {
+        "description": "Hand over a clip YOU cut: NOBS AI stores it on the Clips page and "
+        "uploads it to YouTube as PRIVATE. channel: 'auto' (default: the main channel, or the "
+        "second one if the main isn't connected), 'main' or 'clips'. publish=true makes it "
+        "public — ONLY when Nobert explicitly told you to publish clips.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["title", "video_url"],
+            "properties": {
+                "title": {**_STR, "description": "Clip title (also the YouTube title)."},
+                "video_url": {**_STR, "description": "Direct public https link to the MP4."},
+                "description": {**_STR, "description": "YouTube description / why this moment."},
+                "source_title": {
+                    **_STR,
+                    "description": "Title of the long video it was cut from (groups clips).",
+                },
+                "start_seconds": {"type": "number"},
+                "end_seconds": {"type": "number"},
+                "channel": {"type": "string", "enum": ["auto", "main", "clips"]},
+                "publish": {"type": "boolean"},
+            },
+        },
+        "handler": _tool_submit_clip,
+    },
+    "nobs_publish_clip": {
+        "description": "Make an already-uploaded clip public NOW. ONLY when Nobert explicitly "
+        "told you, in this conversation, to publish that clip. Requires confirm=true.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["clip_id", "confirm"],
+            "properties": {"clip_id": _STR, "confirm": {"type": "boolean"}, "channel": _STR},
+        },
+        "handler": _tool_publish_clip,
+    },
+    "nobs_list_clips": {
+        "description": "List recent clips with their YouTube status.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"limit": {"type": "integer", "description": "1-50, default 20."}},
+        },
+        "handler": _tool_list_clips,
+    },
     "nobs_upload_instructions": {
         "description": "How to send a finished MP4 that only exists in your sandbox "
         "(no public link) straight to NOBS AI.",
@@ -530,7 +672,7 @@ def _call_tool(ctx: RpcContext, params: dict) -> dict:
     try:
         return tool["handler"](ctx, params.get("arguments") or {})
     except ConnectorImportError as exc:
-        ctx.db.rollback()
+        # Raised before anything is written, or after the importer already rolled back.
         return _text(str(exc), is_error=True)
     except Exception:  # noqa: BLE001 - a tool bug must not become an HTTP 500
         logger.exception("Connector tool %s failed", params.get("name"))

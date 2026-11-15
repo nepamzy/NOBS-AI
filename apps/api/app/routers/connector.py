@@ -41,6 +41,7 @@ from sqlalchemy.orm import Session
 from app.auth.deps import require_admin
 from app.auth.security import hash_lookup_value
 from app.config import settings
+from app.connector import clips as clip_tools
 from app.connector import importer
 from app.connector.importer import ConnectorImportError, ImportRequest
 from app.connector.mcp import RpcContext, _video_summary, handle_message
@@ -262,6 +263,51 @@ def upload_finished_video(
                     raise ConnectorImportError("A title is required.")
                 video = importer.import_finished_video(db, user, request, storage, work)
     except ConnectorImportError as exc:
-        db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _video_summary(video)
+
+
+@router.post(
+    "/connector/upload-clip/{key}",
+    dependencies=[Depends(rate_limit("connector-upload", 30, 60))],
+)
+def upload_clip(
+    key: str,
+    file: UploadFile = File(...),
+    title: str = Form(...),
+    description: str = Form(default=""),
+    source_title: str = Form(default=clip_tools.DEFAULT_SOURCE_TITLE),
+    start_seconds: float | None = Form(default=None),
+    end_seconds: float | None = Form(default=None),
+    channel: str = Form(default="auto"),
+    publish: bool = Form(default=False),
+    db: Session = Depends(get_db),
+) -> dict:
+    """A clip Claude cut in its own sandbox. Stored, then uploaded to YouTube as
+    PRIVATE; `publish=true` (only when Nobert said so) makes it public."""
+    user = _user_for_key(db, key)
+    storage = get_storage_backend(
+        settings.storage_backend,
+        settings.supabase_url,
+        settings.supabase_service_role_key,
+        settings.supabase_storage_bucket,
+    )
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "clip.mp4"
+            _save_upload(file, path, settings.connector_max_import_mb * 1024 * 1024)
+            request = clip_tools.ClipRequest(
+                title=title,
+                video_path=path,
+                description=description,
+                source_title=source_title,
+                start_seconds=start_seconds,
+                end_seconds=end_seconds,
+                channel=channel,
+                publish=publish,
+            )
+            clip = clip_tools.store_clip(db, user, request, storage)
+    except ConnectorImportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    clip, error = clip_tools.upload_stored_clip(db, clip, channel, publish)
+    return clip_tools.clip_summary(clip, error)

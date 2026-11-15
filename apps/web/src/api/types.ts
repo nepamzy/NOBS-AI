@@ -99,6 +99,8 @@ export interface Clip {
   clip_path: string | null;
   clip_url: string | null;
   youtube_video_id: string | null;
+  /** Which connected channel it was uploaded to; null if not uploaded yet. */
+  youtube_channel: "main" | "clips" | null;
   youtube_published: boolean;
   created_at: string;
 }

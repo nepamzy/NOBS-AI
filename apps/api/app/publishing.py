@@ -11,12 +11,15 @@ Hard rules (CLAUDE.md Part 1 — publishing is externally visible):
 """
 
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
 import httpx
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.models.clip import Clip
 from app.models.enums import PipelineStage
 from app.models.script import Script
 from app.models.video import Video
@@ -40,12 +43,79 @@ class PublishingError(Exception):
         self.status = status
 
 
-def _youtube() -> YouTubeConnector:
-    return YouTubeConnector(
+CHANNELS = ("main", "clips")
+
+
+def _credentials(channel: str) -> tuple[str, str, str]:
+    if channel == "clips":
+        return (
+            settings.clips_youtube_client_id,
+            settings.clips_youtube_client_secret,
+            settings.clips_youtube_refresh_token,
+        )
+    return (
         settings.google_youtube_client_id,
         settings.google_youtube_client_secret,
         settings.google_youtube_refresh_token,
     )
+
+
+def channel_configured(channel: str) -> bool:
+    return all(_credentials(channel))
+
+
+def _youtube_for(channel: str) -> YouTubeConnector:
+    return YouTubeConnector(*_credentials(channel))
+
+
+def _youtube() -> YouTubeConnector:
+    return _youtube_for("main")
+
+
+def resolve_channel(requested: str | None) -> str:
+    """"auto" (the default) means: the main channel if it is connected,
+    otherwise the second (clips) channel. An explicit "main" or "clips" is
+    honoured, or refused if that channel isn't connected — never silently
+    swapped for the other one."""
+    requested = (requested or "auto").strip().lower()
+    if requested == "auto":
+        for channel in CHANNELS:
+            if channel_configured(channel):
+                return channel
+        raise PublishingError(
+            "No YouTube channel is connected yet (see YOUTUBE_SETUP.md).", status=402
+        )
+    if requested not in CHANNELS:
+        raise PublishingError("channel must be 'main', 'clips' or 'auto'.", status=422)
+    if not channel_configured(requested):
+        raise PublishingError(
+            f"The {requested} YouTube channel isn't connected yet (see YOUTUBE_SETUP.md).",
+            status=402,
+        )
+    return requested
+
+
+@contextmanager
+def _youtube_errors() -> Iterator[None]:
+    """Turns a failed YouTube/Google call into a message a person can act on,
+    instead of raw HTTP-library text."""
+    try:
+        yield
+    except EngineNotConfiguredError as exc:
+        raise PublishingError(str(exc), status=402) from exc
+    except httpx.HTTPStatusError as exc:
+        code = exc.response.status_code
+        hint = (
+            "the YouTube connection was rejected — reconnect it in Channel Connections"
+            if code in (400, 401, 403)
+            else "try again in a few minutes"
+        )
+        raise PublishingError(f"Google/YouTube answered HTTP {code}: {hint}.", status=502) from exc
+    except httpx.HTTPError as exc:
+        raise PublishingError(
+            f"Couldn't reach YouTube ({type(exc).__name__}); try again in a few minutes.",
+            status=502,
+        ) from exc
 
 
 def require_youtube_configured() -> None:
@@ -123,7 +193,7 @@ def publish_now(
     require_youtube_configured()
     youtube = _youtube()
 
-    try:
+    with _youtube_errors():
         if not video.youtube_video_id:
             default_title, default_description = default_title_and_description(db, video)
             result = youtube.upload_video(
@@ -136,23 +206,6 @@ def publish_now(
             video.youtube_video_id = result.video_id
             db.commit()
         youtube.publish_video(video.youtube_video_id)
-    except EngineNotConfiguredError as exc:
-        raise PublishingError(str(exc), status=402) from exc
-    except httpx.HTTPStatusError as exc:
-        code = exc.response.status_code
-        hint = (
-            "the YouTube connection was rejected — reconnect it in Channel Connections"
-            if code in (400, 401, 403)
-            else "try again in a few minutes"
-        )
-        raise PublishingError(
-            f"Google/YouTube answered HTTP {code}: {hint}.", status=502
-        ) from exc
-    except httpx.HTTPError as exc:
-        raise PublishingError(
-            f"Couldn't reach YouTube ({type(exc).__name__}); try again in a few minutes.",
-            status=502,
-        ) from exc
 
     video.youtube_published = True
     video.scheduled_publish_at = None
@@ -160,3 +213,33 @@ def publish_now(
     db.commit()
     db.refresh(video)
     return video
+
+
+def upload_clip(db: Session, clip: Clip, channel: str | None, publish: bool) -> Clip:
+    """Uploads a clip PRIVATE to a channel, and — only if `publish` — makes it
+    public. A clip that is already on YouTube stays on the channel it went to;
+    `channel` only matters for the first upload. Each step commits on its own,
+    so a failure after the upload never loses the upload."""
+    if not clip.clip_path:
+        raise PublishingError("Clip hasn't finished rendering yet")
+    if clip.youtube_published:
+        raise PublishingError("This clip is already public on YouTube.")
+
+    if clip.youtube_video_id:
+        chosen = clip.youtube_channel or "clips"
+    else:
+        chosen = resolve_channel(channel)
+    youtube = _youtube_for(chosen)
+
+    with _youtube_errors():
+        if not clip.youtube_video_id:
+            result = youtube.upload_video(clip.clip_path, clip.title, clip.reason, [])
+            clip.youtube_video_id = result.video_id
+            clip.youtube_channel = chosen
+            db.commit()
+        if publish:
+            youtube.publish_video(clip.youtube_video_id)
+            clip.youtube_published = True
+            db.commit()
+    db.refresh(clip)
+    return clip

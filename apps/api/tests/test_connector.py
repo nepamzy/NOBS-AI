@@ -156,7 +156,7 @@ def test_initialize_and_tools_list(client):
         "nobs_import_video", "nobs_upload_instructions", "nobs_list_projects",
         "nobs_list_videos", "nobs_get_video", "nobs_list_claude_jobs", "nobs_get_claude_job",
         "nobs_complete_claude_job", "nobs_schedule_publish", "nobs_cancel_scheduled_publish",
-        "nobs_publish_video",
+        "nobs_publish_video", "nobs_submit_clip", "nobs_publish_clip", "nobs_list_clips",
     }
     assert not any(bad in n for n in names for bad in ("delete", "spend", "pay"))
     assert all(t["inputSchema"]["type"] == "object" for t in tools)

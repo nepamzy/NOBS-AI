@@ -30,6 +30,10 @@ class Clip(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     clip_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     youtube_video_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Which connected channel this clip was uploaded to: "main" or "clips".
+    # Null on clips uploaded before this existed — those always went to the
+    # second ("clips") channel.
+    youtube_channel: Mapped[str | None] = mapped_column(String(10), nullable=True)
     youtube_published: Mapped[bool] = mapped_column(Boolean, default=False)
 
     source_video: Mapped["SourceVideo"] = relationship(back_populates="clips")

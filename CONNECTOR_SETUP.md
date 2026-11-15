@@ -90,6 +90,28 @@ upload command, adding `video_id`). The video then shows as Completed.
 - Needs YouTube connected (`YOUTUBE_SETUP.md`). Without it, scheduling/publishing is
   refused with a clear message.
 
+## Clips: Claude cuts them, NOBS AI uploads them
+
+Claude can do the clipping itself: it finds the moments in a long video, cuts them in
+its own sandbox, then hands each finished clip over with `nobs_submit_clip` (a public
+https link) or the `clip_command` from `nobs_upload_instructions` (direct upload).
+NOBS AI files each clip on the **Smart Clipping** page, grouped by the long video's
+title, and **uploads it to YouTube as private**.
+
+- **Which channel:** by default the **main channel** (the one your videos use), or the
+  **second (clips) channel** if the main one isn't connected. Claude can say
+  `channel: "main"` or `"clips"` explicitly; an explicit channel that isn't connected is
+  refused, never silently swapped. A clip stays on the channel it was uploaded to.
+- **Public only when you say so:** `publish=true` on the submit, or `nobs_publish_clip`
+  (needs `confirm=true`), and only when you told Claude to publish clips. Otherwise
+  publish from the Smart Clipping page.
+- **A failed upload never loses the clip.** If YouTube isn't connected or rejects it,
+  the clip is still stored, and Claude is told exactly why.
+- The page shows each clip's status: "Private · main channel", "Published · second
+  channel".
+- Separate from NOBS AI's own automatic clipping (upload a video; it transcribes and picks
+  moments itself), which still needs an LLM key and is unchanged.
+
 ## Not built / not verified
 
 - **Not tried from the real Claude custom-connector UI** — verified with raw protocol
@@ -98,3 +120,5 @@ upload command, adding `video_id`). The video then shows as Completed.
   failure path (bad credentials) was exercised live; the success path is tested
   with a stand-in YouTube client only.
 - Switching a video from Claude to Runpod after the fact isn't built.
+- Clips: 50 MB per clip (file-size ceiling); a real upload to YouTube hasn't happened
+  (not connected). The Google-rejection path was exercised live.

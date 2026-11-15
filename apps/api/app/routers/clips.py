@@ -5,6 +5,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
+from app import publishing
 from app.auth.deps import get_current_user
 from app.config import settings
 from app.db import get_db
@@ -13,8 +14,6 @@ from app.models.clip import Clip
 from app.models.source_video import SourceVideo
 from app.models.user import User
 from app.schemas.clip import ClipRead, SourceVideoRead, SourceVideoUpdate
-from services.common.errors import EngineNotConfiguredError
-from services.connectors.youtube.adapter import YouTubeConnector
 from services.storage.factory import get_storage_backend
 
 router = APIRouter(tags=["clips"])
@@ -206,24 +205,9 @@ def publish_clip(
     YouTube channel. For use when SourceVideo.auto_publish was off — with
     it on, this already happened automatically once the clip was ready."""
     clip = _owned_clip_or_404(db, clip_id, user)
-    if not clip.clip_path:
-        raise HTTPException(status_code=409, detail="Clip hasn't finished rendering yet")
-
-    youtube = YouTubeConnector(
-        settings.clips_youtube_client_id,
-        settings.clips_youtube_client_secret,
-        settings.clips_youtube_refresh_token,
-    )
+    # Pinned: a clip already on a channel stays there; a not-yet-uploaded one
+    # from this UI still goes to the SECOND channel, as this endpoint always has.
     try:
-        if not clip.youtube_video_id:
-            result = youtube.upload_video(clip.clip_path, clip.title, clip.reason)
-            clip.youtube_video_id = result.video_id
-            db.commit()
-        youtube.publish_video(clip.youtube_video_id)
-    except EngineNotConfiguredError as exc:
-        raise HTTPException(status_code=402, detail=str(exc)) from exc
-
-    clip.youtube_published = True
-    db.commit()
-    db.refresh(clip)
-    return clip
+        return publishing.upload_clip(db, clip, clip.youtube_channel or "clips", publish=True)
+    except publishing.PublishingError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc

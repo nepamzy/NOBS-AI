@@ -35,6 +35,7 @@ class ClipRead(BaseModel):
     reason: str
     clip_path: str | None
     youtube_video_id: str | None
+    youtube_channel: str | None
     youtube_published: bool
     created_at: datetime
 

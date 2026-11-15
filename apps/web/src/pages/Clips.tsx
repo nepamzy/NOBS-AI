@@ -342,6 +342,12 @@ function SourceVideoCard({
   );
 }
 
+function channelSuffix(clip: Clip): string {
+  if (clip.youtube_channel === "main") return " · main channel";
+  if (clip.youtube_channel === "clips" || clip.youtube_video_id) return " · second channel";
+  return "";
+}
+
 function ClipRow({ clip, onPublished }: { clip: Clip; onPublished: () => void }) {
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -380,11 +386,16 @@ function ClipRow({ clip, onPublished }: { clip: Clip; onPublished: () => void })
             </a>
           )}
           {clip.youtube_published ? (
-            <StatusPill tone="success" label="Published" />
+            <StatusPill tone="success" label={`Published${channelSuffix(clip)}`} />
           ) : clip.clip_path ? (
-            <Button variant="success" size="sm" onClick={handlePublish} disabled={publishing}>
-              {publishing ? "Publishing…" : "Publish"}
-            </Button>
+            <>
+              {clip.youtube_video_id && (
+                <StatusPill tone="warning" label={`Private${channelSuffix(clip)}`} />
+              )}
+              <Button variant="success" size="sm" onClick={handlePublish} disabled={publishing}>
+                {publishing ? "Publishing…" : "Publish"}
+              </Button>
+            </>
           ) : (
             <span className="text-xs text-white/40">Rendering…</span>
           )}
