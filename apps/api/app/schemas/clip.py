@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from app.models.enums import ClipJobStage
 from app.storage import to_url
@@ -18,6 +18,16 @@ class SourceVideoRead(BaseModel):
     auto_publish: bool
     created_at: datetime
     updated_at: datetime
+    source_path: str = Field(exclude=True)
+
+    @computed_field
+    @property
+    def source_url(self) -> str | None:
+        """The uploaded file, playable in the browser. None for clips Claude
+        supplied, which have no source file in NOBS AI."""
+        if self.source_path.startswith("external:"):
+            return None
+        return to_url(self.source_path)
 
 
 class SourceVideoUpdate(BaseModel):

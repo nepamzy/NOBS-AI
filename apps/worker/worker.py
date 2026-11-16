@@ -31,7 +31,24 @@ from services.scheduling.auto_retry import AutoRetryRunner
 from services.scheduling.publish_scheduler import PublishSchedulerRunner
 from services.scheduling.scheduler import SchedulerRunner
 
+
+def _requeue_interrupted_clip_jobs() -> None:
+    """A worker restart kills any running job without a trace; pick those
+    Smart Clipping uploads back up instead of leaving them "Queued" forever."""
+    from app.jobs.clip_recovery import requeue_interrupted_source_videos
+
+    db = SessionLocal()
+    try:
+        for line in requeue_interrupted_source_videos(db):
+            print(f"[startup] clip upload {line}", flush=True)
+    except Exception as exc:  # noqa: BLE001 - never stop the worker from starting
+        print(f"[startup] could not re-queue interrupted clip uploads: {exc}", flush=True)
+    finally:
+        db.close()
+
+
 if __name__ == "__main__":
+    _requeue_interrupted_clip_jobs()
     scheduler = SchedulerRunner(SessionLocal)
     scheduler.start()
 

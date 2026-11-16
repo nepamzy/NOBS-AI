@@ -80,6 +80,10 @@ def advance_clip_stage(source_video, db: Session, ctx: ClipPipelineContext) -> N
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if stage == ClipJobStage.UPLOADED:
+        from services.clipping.audio import NO_AUDIO_MESSAGE, has_audio_stream
+
+        if not has_audio_stream(source_video.source_path):
+            _block(source_video, db, "transcribing", NO_AUDIO_MESSAGE)
         audio_path = str(output_dir / "audio.wav")
         extract_audio_for_transcription(source_video.source_path, audio_path)
 

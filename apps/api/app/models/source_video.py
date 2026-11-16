@@ -40,6 +40,11 @@ class SourceVideo(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # defaults False. He can still turn it off per upload.
     auto_publish: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # How many times the clip job has STARTED for this upload. A job that is
+    # killed mid-run (the worker was restarted or ran out of memory) leaves no
+    # trace, so this is what lets the app retry it a few times and then stop,
+    # instead of looping forever or leaving it "Queued" for days.
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     owner: Mapped["User"] = relationship()
     clips: Mapped[list["Clip"]] = relationship(
         back_populates="source_video", cascade="all, delete-orphan"

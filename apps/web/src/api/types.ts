@@ -79,6 +79,8 @@ export type ClipJobStage =
   | "failed";
 
 export interface SourceVideo {
+  /** The uploaded file, playable in the browser; null for clips Claude supplied. */
+  source_url: string | null;
   id: string;
   original_filename: string;
   stage: ClipJobStage;

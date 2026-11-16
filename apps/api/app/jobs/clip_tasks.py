@@ -14,6 +14,15 @@ logger = logging.getLogger(__name__)
 
 _MAX_STAGES_PER_JOB = 6  # UPLOADED, TRANSCRIBING, SELECTING_CLIPS, EXTRACTING + headroom
 
+# A job killed mid-run (worker restarted / out of memory) leaves no error, so
+# the number of times it STARTED is the only evidence. After this many starts
+# that never finished, stop instead of looping; a person presses Retry.
+MAX_ATTEMPTS = 3
+GIVE_UP_MESSAGE = (
+    f"Stopped after {MAX_ATTEMPTS} attempts that never finished — the worker was restarted "
+    "each time, most likely because it ran out of memory. Press Retry to try again."
+)
+
 
 def _record_clip_failure(source_video_id: str, stage_before: str, exc: Exception) -> None:
     """Mark a source video FAILED on a brand-new DB session — same reasoning
@@ -110,8 +119,17 @@ def advance_clip_pipeline(source_video_id: str) -> str:
         if source_video is None:
             return f"source video {source_video_id} not found"
 
-        ctx = _build_clip_context()
         terminal = {ClipJobStage.COMPLETED, ClipJobStage.FAILED}
+        if source_video.stage not in terminal:
+            if source_video.attempts >= MAX_ATTEMPTS:
+                source_video.stage_detail = GIVE_UP_MESSAGE
+                db.commit()
+                return f"gave up after {source_video.attempts} attempts"
+            # Committed BEFORE any work, so it survives the process being killed.
+            source_video.attempts += 1
+            db.commit()
+
+        ctx = _build_clip_context()
         for _ in range(_MAX_STAGES_PER_JOB):
             if source_video.stage in terminal:
                 break

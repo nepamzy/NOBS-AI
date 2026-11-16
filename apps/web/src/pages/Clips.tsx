@@ -43,6 +43,45 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+/** An inline player, so a clip or upload can be watched right here instead of
+ * opening a bare file in a new tab. */
+function PlayableVideo({ src }: { src: string }) {
+  const [failed, setFailed] = useState(false);
+  const url = resolveStorageUrl(src) ?? src;
+  return (
+    <div className="mt-3">
+      {failed ? (
+        <p className="text-xs text-amber-300">
+          This browser couldn't play it here.{" "}
+          <a href={url} target="_blank" rel="noreferrer" className="underline">
+            Open the file directly
+          </a>
+          .
+        </p>
+      ) : (
+        <video
+          src={url}
+          controls
+          preload="metadata"
+          playsInline
+          onError={() => setFailed(true)}
+          className="max-h-[480px] w-full rounded-md bg-black"
+        />
+      )}
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-1 inline-block text-xs text-white/40 hover:text-white/70"
+      >
+        Open in a new tab
+      </a>
+    </div>
+  );
+}
+
+const STUCK_AFTER_MS = 3 * 60 * 1000;
+
 export function Clips() {
   const [sourceVideos, setSourceVideos] = useState<SourceVideo[]>([]);
   const [clipsBySource, setClipsBySource] = useState<Record<string, Clip[]>>({});
@@ -125,8 +164,9 @@ export function Clips() {
       <h1 className="font-heading text-2xl font-semibold text-white">Smart Clipping</h1>
       <p className="mt-1 text-white/60">
         Give it an already-finished video — it transcribes, picks the best moments, cuts them, and
-        ships them to your other YouTube channel. No review step by default; turn that off per
-        upload if you'd rather check each one first.
+        ships them to your other YouTube channel. You can watch every upload and every clip
+        right here. Auto-ship is on by default, so each upload's switch is worth turning off if
+        you want to review clips before anything goes to YouTube.
       </p>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_260px]">
@@ -218,8 +258,10 @@ export function Clips() {
 }
 
 function RecentClipRow({ clip }: { clip: Clip }) {
+  const [watching, setWatching] = useState(false);
   return (
-    <Panel className="flex items-center gap-3 px-4 py-2.5">
+    <Panel className="px-4 py-2.5">
+      <div className="flex items-center gap-3">
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-black/40 text-white/30">
         <Scissors size={16} />
       </span>
@@ -229,6 +271,14 @@ function RecentClipRow({ clip }: { clip: Clip }) {
           Created {timeAgo(clip.created_at)} · {formatTime(clip.start_seconds)}–{formatTime(clip.end_seconds)}
         </p>
       </div>
+      {clip.clip_url && (
+        <button
+          onClick={() => setWatching((w) => !w)}
+          className="shrink-0 rounded-md border border-white/15 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10"
+        >
+          {watching ? "Hide" : "Watch"}
+        </button>
+      )}
       {clip.clip_url ? (
         <a
           href={resolveStorageUrl(clip.clip_url) ?? undefined}
@@ -242,6 +292,8 @@ function RecentClipRow({ clip }: { clip: Clip }) {
       ) : (
         <span className="shrink-0 text-xs text-white/40">Rendering…</span>
       )}
+      </div>
+      {watching && clip.clip_url && <PlayableVideo src={clip.clip_url} />}
     </Panel>
   );
 }
@@ -257,6 +309,36 @@ function SourceVideoCard({
 }) {
   const [togglingAuto, setTogglingAuto] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [watching, setWatching] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const unfinished = sourceVideo.stage !== "completed";
+  // No progress for a while and no recorded reason: the job was probably
+  // interrupted (a restart, or the worker running out of memory).
+  const stuck =
+    unfinished &&
+    !sourceVideo.stage_detail &&
+    now - new Date(sourceVideo.updated_at).getTime() > STUCK_AFTER_MS;
+  const canRetry = unfinished && (stuck || Boolean(sourceVideo.stage_detail) || sourceVideo.stage === "failed");
+
+  async function handleRetry() {
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      await api.retrySourceVideo(sourceVideo.id);
+      onChange();
+    } catch (err) {
+      setRetryError(errorMessage(err));
+    } finally {
+      setRetrying(false);
+    }
+  }
 
   async function handleDelete() {
     const confirmed = window.confirm(
@@ -299,6 +381,23 @@ function SourceVideoCard({
             <StatusPill tone={STAGE_TONES[sourceVideo.stage]} label={STAGE_LABELS[sourceVideo.stage]} />
           </div>
         </div>
+        {sourceVideo.source_url && (
+          <button
+            onClick={() => setWatching((w) => !w)}
+            className="shrink-0 rounded-md border border-white/15 px-2.5 py-1 text-xs font-semibold text-white/80 transition-colors hover:bg-white/10"
+          >
+            {watching ? "Hide video" : "Watch upload"}
+          </button>
+        )}
+        {canRetry && (
+          <button
+            onClick={handleRetry}
+            disabled={retrying}
+            className="shrink-0 rounded-md border border-accent-500/40 bg-accent-500/10 px-2.5 py-1 text-xs font-semibold text-accent-300 transition-colors hover:bg-accent-500/20 disabled:opacity-50"
+          >
+            {retrying ? "Retrying…" : "Retry"}
+          </button>
+        )}
         <button
           onClick={toggleAutoPublish}
           disabled={togglingAuto}
@@ -324,6 +423,16 @@ function SourceVideoCard({
           <Trash2 size={14} />
         </button>
       </div>
+
+      {watching && sourceVideo.source_url && <PlayableVideo src={sourceVideo.source_url} />}
+
+      {stuck && (
+        <p className="mt-3 rounded-md border border-white/10 bg-white/5 p-3 text-xs text-white/60">
+          This has been waiting a while without any progress — it was probably interrupted. Press
+          Retry to run it again (it re-checks automatically after a restart, up to 3 times).
+        </p>
+      )}
+      {retryError && <p className="mt-2 text-xs text-red-400">{retryError}</p>}
 
       {sourceVideo.stage_detail && (
         <pre className="mt-3 whitespace-pre-wrap rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
@@ -356,6 +465,7 @@ function channelSuffix(clip: Clip): string {
 
 function ClipRow({ clip, onPublished }: { clip: Clip; onPublished: () => void }) {
   const [publishing, setPublishing] = useState(false);
+  const [watching, setWatching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handlePublish() {
@@ -383,14 +493,12 @@ function ClipRow({ clip, onPublished }: { clip: Clip; onPublished: () => void })
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {clip.clip_url && (
-            <a
-              href={resolveStorageUrl(clip.clip_url) ?? undefined}
-              target="_blank"
-              rel="noreferrer"
+            <button
+              onClick={() => setWatching((w) => !w)}
               className="text-xs text-accent-400 hover:underline"
             >
-              Watch
-            </a>
+              {watching ? "Hide" : "Watch"}
+            </button>
           )}
           {clip.youtube_published ? (
             <StatusPill tone="success" label={`Published${channelSuffix(clip)}`} />
@@ -408,6 +516,7 @@ function ClipRow({ clip, onPublished }: { clip: Clip; onPublished: () => void })
           )}
         </div>
       </div>
+      {watching && clip.clip_url && <PlayableVideo src={clip.clip_url} />}
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
     </li>
   );

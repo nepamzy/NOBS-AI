@@ -384,6 +384,8 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+  retrySourceVideo: (id: string) =>
+    request<SourceVideo>(`/source-videos/${id}/retry`, { method: "POST" }),
   deleteSourceVideo: (id: string) => request<void>(`/source-videos/${id}`, { method: "DELETE" }),
   listClips: (sourceVideoId: string) =>
     request<Clip[]>(`/source-videos/${sourceVideoId}/clips`),

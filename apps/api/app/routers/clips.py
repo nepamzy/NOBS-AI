@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -11,6 +12,7 @@ from app.config import settings
 from app.db import get_db
 from app.jobs.queue import enqueue_clip_pipeline_start
 from app.models.clip import Clip
+from app.models.enums import ClipJobStage
 from app.models.source_video import SourceVideo
 from app.models.user import User
 from app.schemas.clip import ClipRead, SourceVideoRead, SourceVideoUpdate
@@ -168,6 +170,34 @@ def delete_source_video(
     source_video = _owned_source_video_or_404(db, source_video_id, user)
     db.delete(source_video)
     db.commit()
+
+
+@router.post("/source-videos/{source_video_id}/retry", response_model=SourceVideoRead)
+def retry_source_video(
+    source_video_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> SourceVideo:
+    """Runs a stuck, interrupted or failed upload through the pipeline again.
+    Finished steps are kept (a saved transcript is reused)."""
+    source_video = _owned_source_video_or_404(db, source_video_id, user)
+    if source_video.stage == ClipJobStage.COMPLETED:
+        raise HTTPException(status_code=409, detail="This upload is already finished.")
+
+    if source_video.stage == ClipJobStage.FAILED:
+        source_video.stage = (
+            ClipJobStage.SELECTING_CLIPS if source_video.transcript_path else ClipJobStage.UPLOADED
+        )
+    source_video.stage_detail = ""
+    source_video.attempts = 0
+    # Set explicitly: if nothing else changed, the database would not bump it,
+    # and the page would keep calling a just-retried upload "stuck".
+    source_video.updated_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(source_video)
+
+    enqueue_clip_pipeline_start(source_video_id=source_video.id)
+    return source_video
 
 
 @router.get("/source-videos/{source_video_id}/clips", response_model=list[ClipRead])
