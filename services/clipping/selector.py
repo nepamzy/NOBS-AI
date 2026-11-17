@@ -22,6 +22,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from services.ai.parsing import parsed_or_raise
 from services.clipping.frames import FrameSample
 from services.clipping.transcription.engine import TranscriptResult, Word
 from services.common.errors import ApprovalRequiredError, CostWarning, EngineNotConfiguredError
@@ -179,7 +180,7 @@ def select_clips(
         messages=[{"role": "user", "content": content}],
         output_format=_ClipSelectionsModel,
     )
-    parsed = response.parsed_output
+    parsed = parsed_or_raise(response, "the clip selection")
 
     selections = []
     for clip in parsed.clips:

@@ -203,3 +203,23 @@ def test_non_failed_videos_are_left_alone(db_session, monkeypatch):
 
     assert results == []
     assert enqueued == []
+
+
+def test_an_unreadable_ai_reply_is_not_auto_retried(db_session, monkeypatch):
+    """The same request would be cut off the same way, and every failed call is
+    billed — so this waits for a person instead of re-billing."""
+    from app.models.enums import PipelineStage
+
+    import services.scheduling.auto_retry as auto_retry_module
+
+    enqueued = _patch_enqueue(monkeypatch)
+    project = _create_project(db_session)
+    video = _make_failed_video(
+        db_session,
+        project,
+        "Crashed at 'script': ModelOutputError: The AI's reply for the script was cut off",
+    )
+
+    assert auto_retry_module.check_and_retry_crashed_videos(db_session) == []
+    db_session.refresh(video)
+    assert video.stage == PipelineStage.FAILED and enqueued == []

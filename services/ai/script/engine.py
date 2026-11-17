@@ -6,14 +6,45 @@ Same gate as the research engine: no LLM call happens without a configured
 provider and Nobert's approval. Only "anthropic" is actually implemented.
 """
 
+import math
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel
 
+from services.ai.parsing import parsed_or_raise
 from services.ai.research.engine import ResearchResult
 from services.common.errors import ApprovalRequiredError, CostWarning, EngineNotConfiguredError
 
-_MAX_OUTPUT_TOKENS = 4096
+# How big a reply a script needs. The old fixed 4096-token cap cut off any
+# script of more than a couple of minutes mid-answer (a 15-minute video is
+# ~110 scenes), which then could not be read at all — and was billed anyway.
+_SECONDS_PER_SCENE = 8
+_TOKENS_PER_SCENE = 220  # narration + visual prompt + fields, with room to spare
+_BASE_TOKENS = 1200  # title, hook, structure
+_MIN_TOKENS = 4096
+_MAX_TOKENS = 16000  # one reply; stays under the SDK's limit for non-streaming requests
+_SCENES_PER_PART = 60  # longer scripts are written in several parts
+_MAX_PARTS = 6
+_MARGIN = 1.15
+
+
+class ScriptLengthError(RuntimeError):
+    """The requested video is longer than a script can be written for."""
+
+
+def _plan(target_seconds: int) -> tuple[int, int]:
+    """(number of parts, max_tokens for each reply)."""
+    scenes = max(1, math.ceil(target_seconds / _SECONDS_PER_SCENE))
+    parts = math.ceil(scenes / _SCENES_PER_PART)
+    if parts > _MAX_PARTS:
+        longest = _MAX_PARTS * _SCENES_PER_PART * _SECONDS_PER_SCENE // 60
+        raise ScriptLengthError(
+            f"A {target_seconds // 60}-minute script is too long to write in one go. "
+            f"Choose {longest} minutes or less."
+        )
+    per_part = math.ceil(scenes / parts * _MARGIN)
+    tokens = min(_MAX_TOKENS, max(_MIN_TOKENS, _BASE_TOKENS + _TOKENS_PER_SCENE * per_part))
+    return parts, tokens
 
 
 @dataclass
@@ -47,6 +78,12 @@ class _ScriptDraftModel(BaseModel):
     hook: str
     estimated_duration_seconds: int
     word_count: int
+    scenes: list[_SceneModel]
+
+
+class _ScriptPartModel(BaseModel):
+    """A continuation: just the next scenes of a script already begun."""
+
     scenes: list[_SceneModel]
 
 
@@ -98,6 +135,7 @@ class ScriptEngine:
 
         import anthropic
 
+        parts, max_tokens = _plan(target_duration_seconds)
         client = anthropic.Anthropic(api_key=self._llm_api_key)
         research_context = ""
         if research is not None:
@@ -114,42 +152,90 @@ class ScriptEngine:
                 "\n\nNotes from Nobert on past videos in this project — "
                 f"apply them to this one:\n{lessons}"
             )
-        response = client.messages.parse(
-            model=self._llm_model,
-            max_tokens=_MAX_OUTPUT_TOKENS,
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        f"Write a YouTube video script for topic: {topic!r}, "
-                        f"targeting about {target_duration_seconds} seconds "
-                        "of narration. Break it into numbered scenes, each "
-                        "5-12 seconds of narration (for a target under 30 seconds, "
-                        "use one or two scenes) with its own visual_prompt "
-                        "(a text-to-video generation prompt describing what "
-                        "should appear on screen) and a transition "
-                        "('cut', 'fade', or 'dissolve')." + research_context + lessons_context
-                    ),
-                }
-            ],
-            output_format=_ScriptDraftModel,
-        )
-        parsed = response.parsed_output
-        return ScriptDraft(
-            title=parsed.title,
-            hook=parsed.hook,
-            estimated_duration_seconds=parsed.estimated_duration_seconds,
-            word_count=parsed.word_count,
-            scenes=[
-                SceneDraft(
-                    order=s.order,
-                    narration=s.narration,
-                    visual_prompt=s.visual_prompt,
-                    duration_seconds=s.duration_seconds,
-                    transition=s.transition,
+        context = research_context + lessons_context
+        part_seconds = round(target_duration_seconds / parts)
+
+        title = hook = ""
+        claimed: tuple[int, int] = (0, 0)
+        scenes: list[SceneDraft] = []
+        for part in range(1, parts + 1):
+            if part == 1:
+                prompt = (
+                    f"Write a YouTube video script for topic: {topic!r}, "
+                    f"targeting about {part_seconds} seconds "
+                    "of narration. Break it into numbered scenes, each "
+                    "5-12 seconds of narration (for a target under 30 seconds, "
+                    "use one or two scenes) with its own visual_prompt "
+                    "(a text-to-video generation prompt describing what "
+                    "should appear on screen) and a transition "
+                    "('cut', 'fade', or 'dissolve')."
                 )
-                for s in parsed.scenes
-            ],
+                if parts > 1:
+                    prompt += (
+                        f" This is part 1 of {parts} of a longer "
+                        f"({target_duration_seconds} second) video: write the title, the hook "
+                        "and the opening scenes, and do NOT wrap the story up — the next "
+                        "part continues it."
+                    )
+                prompt += context
+                response = client.messages.parse(
+                    model=self._llm_model,
+                    max_tokens=max_tokens,
+                    messages=[{"role": "user", "content": prompt}],
+                    output_format=_ScriptDraftModel,
+                )
+                parsed = parsed_or_raise(response, "the script")
+                title, hook = parsed.title, parsed.hook
+                claimed = (parsed.estimated_duration_seconds, parsed.word_count)
+            else:
+                last = " | ".join(s.narration for s in scenes[-3:])
+                final = part == parts
+                prompt = (
+                    f"Continue the YouTube video script for topic: {topic!r}, titled "
+                    f"{title!r}. Hook so far: {hook!r}. The script so far ends with these "
+                    f"scenes: {last!r}. Write part {part} of {parts}: about {part_seconds} "
+                    "seconds of narration as numbered scenes of 5-12 seconds each, with a "
+                    "visual_prompt (a text-to-video generation prompt) and a transition "
+                    "('cut', 'fade', or 'dissolve') for every scene. Continue the story "
+                    "seamlessly, without repeating what was already said. "
+                    + (
+                        "This is the FINAL part: bring the video to a satisfying ending."
+                        if final
+                        else "Do NOT wrap the story up — another part follows."
+                    )
+                    + context
+                )
+                response = client.messages.parse(
+                    model=self._llm_model,
+                    max_tokens=max_tokens,
+                    messages=[{"role": "user", "content": prompt}],
+                    output_format=_ScriptPartModel,
+                )
+                parsed = parsed_or_raise(response, f"part {part} of the script")
+
+            scenes.extend(
+                SceneDraft(
+                    order=0,
+                    narration=sc.narration,
+                    visual_prompt=sc.visual_prompt,
+                    duration_seconds=sc.duration_seconds,
+                    transition=sc.transition,
+                )
+                for sc in parsed.scenes
+            )
+
+        for number, scene in enumerate(scenes, start=1):
+            scene.order = number  # one continuous numbering across all parts
+
+        # Measured from the scenes themselves, not the model's own claim.
+        estimated = sum(sc.duration_seconds for sc in scenes) or claimed[0]
+        words = sum(len(sc.narration.split()) for sc in scenes) or claimed[1]
+        return ScriptDraft(
+            title=title,
+            hook=hook,
+            estimated_duration_seconds=estimated,
+            word_count=words,
+            scenes=scenes,
         )
 
     def regenerate_scene(
@@ -200,7 +286,7 @@ class ScriptEngine:
             ],
             output_format=_SceneRegenerateModel,
         )
-        parsed = response.parsed_output
+        parsed = parsed_or_raise(response, "the rewritten scene")
         return SceneDraft(
             order=scene.order,
             narration=parsed.narration,

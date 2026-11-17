@@ -46,6 +46,10 @@ _CHECK_INTERVAL_SECONDS = 30
 _MAX_AUTO_RETRIES = 2
 _RECENT_CRASH_WINDOW_MINUTES = 10
 _CRASHED_AT = re.compile(r"Crashed at '([a-z_]+)'")
+# Crashes that will fail identically if the same request is sent again — and the
+# failed AI call is billed each time. A person has to change something (e.g. a
+# shorter video) first, so these are left FAILED for a human.
+_NOT_RETRYABLE = ("ModelOutputError", "ScriptLengthError")
 
 
 def check_and_retry_crashed_videos(db: Session) -> list[str]:
@@ -73,6 +77,8 @@ def check_and_retry_crashed_videos(db: Session) -> list[str]:
 
     results = []
     for video in candidates:
+        if any(marker in (video.stage_detail or "") for marker in _NOT_RETRYABLE):
+            continue
         match = _CRASHED_AT.search(video.stage_detail or "")
         if match is None:
             continue
