@@ -45,3 +45,10 @@ def test_list_waitlist_returns_signups_for_admin(client):
     assert response.status_code == 200
     emails = {row["email"] for row in response.json()}
     assert emails == {"one@example.com", "two@example.com"}
+
+
+def test_join_waitlist_tolerates_whitespace_and_null_name(client):
+    response = client.post("/waitlist", json={"email": "  Pad@Example.com ", "name": None})
+    assert response.status_code == 201
+    assert response.json()["email"] == "pad@example.com"
+    assert response.json()["name"] == ""

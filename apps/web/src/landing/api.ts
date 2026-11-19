@@ -23,6 +23,14 @@ export function googleOAuthStartUrl(provider: "google" | "youtube"): string {
   return `${BASE_URL}/waitlist/oauth/${provider}/start`;
 }
 
+// FastAPI's 422 detail is an array of validation objects, not a string —
+// turn it into one short human sentence instead of "[object Object]".
+function readableDetail(detail: unknown, status: number): string | undefined {
+  if (typeof detail === "string") return detail;
+  if (status === 422) return "Please enter a valid email address.";
+  return undefined;
+}
+
 export async function joinWaitlist(email: string, name: string): Promise<void> {
   const response = await fetch(`${BASE_URL}/waitlist`, {
     method: "POST",
@@ -34,7 +42,7 @@ export async function joinWaitlist(email: string, name: string): Promise<void> {
     let detail = response.statusText;
     try {
       const body = await response.json();
-      detail = body.detail ?? detail;
+      detail = readableDetail(body.detail, response.status) ?? detail;
     } catch {
       // body wasn't JSON — fall back to statusText
     }
