@@ -7,6 +7,8 @@ import { Features } from "./pages/Features";
 import { Home } from "./pages/Home";
 import { HowItWorks } from "./pages/HowItWorks";
 import { Platform } from "./pages/Platform";
+import { Privacy } from "./pages/Privacy";
+import { Terms } from "./pages/Terms";
 import { Waitlist } from "./pages/Waitlist";
 
 // Every public page of the site. Mounted as the lowest-priority catch-all in
@@ -24,6 +26,8 @@ export function LandingSite() {
         <Route path="faq" element={<FAQ />} />
         <Route path="contact" element={<Contact />} />
         <Route path="waitlist" element={<Waitlist />} />
+        <Route path="privacy" element={<Privacy />} />
+        <Route path="terms" element={<Terms />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
